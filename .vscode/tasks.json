@@ -1,0 +1,25 @@
+{
+  // Ctrl+Shift+B で「ビルドしてQEMUで起動」が実行される
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "make",
+      "problemMatcher": []
+    },
+    {
+      "label": "run",
+      "type": "shell",
+      "command": "make run",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "clean",
+      "type": "shell",
+      "command": "make clean",
+      "problemMatcher": []
+    }
+  ]
+}
