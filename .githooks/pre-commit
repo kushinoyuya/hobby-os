@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# コミット直前に、クレデンシャルやパスワードの直書きが含まれていないか検査する。
+# 見つかった場合はコミットを中止する。
+#
+# 有効化(clone するたびに1回):  git config core.hooksPath .githooks
+
+set -u
+found=0
+
+# 1. コミットしてはいけないファイル名
+bad_files=$(git diff --cached --name-only --diff-filter=ACMR |
+    grep -E '(^|/)(\.env(\..*)?|id_rsa|id_ed25519|.*\.pem|.*\.key|.*\.p12|.*\.pfx|credentials(\.json)?)$')
+if [ -n "$bad_files" ]; then
+    echo "pre-commit: 秘密情報の可能性があるファイルがステージされています:"
+    echo "$bad_files" | sed 's/^/  /'
+    found=1
+fi
+
+# 2. 追加された行に含まれる、秘密情報らしい文字列
+patterns='-----BEGIN [A-Z ]*PRIVATE KEY-----'
+patterns+='|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}'   # GitHub トークン
+patterns+='|AKIA[0-9A-Z]{16}'                                         # AWS アクセスキー
+patterns+='|sk-[A-Za-z0-9_-]{20,}'                                    # OpenAI / Anthropic 等の API キー
+patterns+='|xox[abprs]-[A-Za-z0-9-]{10,}'                             # Slack トークン
+patterns+='|(pass(word|wd)?|secret|token|api[_-]?key)["'\'']?[[:space:]]*[:=][[:space:]]*["'\''][^"'\'']{4,}'  # password = "..."
+
+hits=$(git diff --cached -U0 --diff-filter=ACMR |
+    awk '/^\+\+\+ /{file=substr($0,7); next} /^\+/{print file ": " substr($0,2)}' |
+    grep -iE -- "$patterns")
+if [ -n "$hits" ]; then
+    echo "pre-commit: 秘密情報の可能性がある行が見つかりました:"
+    echo "$hits" | sed 's/^/  /'
+    found=1
+fi
+
+# 3. gitleaks がインストールされていれば、より詳しく検査する
+if command -v gitleaks >/dev/null 2>&1; then
+    if ! gitleaks protect --staged --redact --no-banner; then
+        found=1
+    fi
+fi
+
+if [ "$found" -ne 0 ]; then
+    echo
+    echo "コミットを中止しました。該当箇所を取り除いてから、もう一度コミットしてください。"
+    exit 1
+fi
+exit 0
