@@ -1,0 +1,14 @@
+{
+  // VS Code の C/C++ 拡張機能に、カーネル用のコンパイル設定を教える(赤い波線を防ぐ)
+  "configurations": [
+    {
+      "name": "hobby-os kernel",
+      "compilerPath": "/usr/bin/gcc",
+      "compilerArgs": ["-m32", "-ffreestanding"],
+      "cStandard": "gnu17",
+      "intelliSenseMode": "linux-gcc-x86",
+      "includePath": ["${workspaceFolder}/kernel"]
+    }
+  ],
+  "version": 4
+}

@@ -36,7 +36,7 @@ Windows 11 + WSL2 (Ubuntu) + VS Code で自作OSを開発する環境を作っ�
 開発の流れ:
 
 ```
-boot.asm, stage2.asm ──(nasm、make で実行)──▶ build/os.img ──(QEMU)──▶ 画面に表示
+boot.asm, stage2.asm, kernel/ ──(nasm, gcc, ld、make で実行)──▶ build/os.img ──(QEMU)──▶ 画面に表示
 ```
 
 ## 手順
