@@ -1,109 +1,80 @@
 /*
- * kernel.c - C で書いたカーネル本体
+ * kernel.c - カーネル本体
  *
- * BIOS も標準ライブラリ(printf など)もないので、
- * 画面のメモリ(VRAM、0xB8000 番地)に直接書き込んで文字を表示する。
+ * 各部品を初期化してから割り込みを有効にし、あとは
+ * 「割り込みを待つ → 起きたことを処理する」をずっと繰り返す。
  */
 #include <stdint.h>
+#include "vga.h"
+#include "idt.h"
+#include "pic.h"
+#include "timer.h"
+#include "keyboard.h"
 
-/* テキスト画面: 80文字 x 25行。1文字は2バイト(下位8ビット = 文字、上位8ビット = 色) */
-#define VGA_WIDTH  80
-#define VGA_HEIGHT 25
-static volatile uint16_t *const vga = (volatile uint16_t *)0xB8000;
-
-/* 色: 上位4ビットが背景、下位4ビットが文字 */
-enum {
-    COLOR_NORMAL  = 0x07,   /* 黒地に灰色 */
-    COLOR_TITLE   = 0x1F,   /* 青地に白 */
-    COLOR_OK      = 0x0A,   /* 黒地に明るい緑 */
-};
-
-static int cursor_row;
-static int cursor_col;
-static uint8_t text_color = COLOR_NORMAL;
-
-static void put_at(int row, int col, char c, uint8_t color)
+/* 1行目(タイトルバー)の右側に、起動してからの時間を表示する */
+static void show_uptime(uint32_t ticks)
 {
-    vga[row * VGA_WIDTH + col] = (uint16_t)color << 8 | (uint8_t)c;
+    uint32_t sec = ticks / TIMER_HZ;
+    char text[] = "uptime 00:00:00 ";
+    text[7]  = '0' + (sec / 3600) % 24 / 10;
+    text[8]  = '0' + (sec / 3600) % 24 % 10;
+    text[10] = '0' + (sec / 60) % 60 / 10;
+    text[11] = '0' + (sec / 60) % 60 % 10;
+    text[13] = '0' + sec % 60 / 10;
+    text[14] = '0' + sec % 60 % 10;
+    vga_write_at(0, VGA_WIDTH - (int)sizeof(text) + 1, text, COLOR_TITLE);
 }
-
-static void clear_screen(void)
-{
-    for (int row = 0; row < VGA_HEIGHT; row++)
-        for (int col = 0; col < VGA_WIDTH; col++)
-            put_at(row, col, ' ', COLOR_NORMAL);
-    cursor_row = 0;
-    cursor_col = 0;
-}
-
-/* 画面の一番下まで来たら、全体を1行上にずらす */
-static void scroll_if_needed(void)
-{
-    if (cursor_row < VGA_HEIGHT)
-        return;
-    for (int i = 0; i < (VGA_HEIGHT - 1) * VGA_WIDTH; i++)
-        vga[i] = vga[i + VGA_WIDTH];
-    for (int col = 0; col < VGA_WIDTH; col++)
-        put_at(VGA_HEIGHT - 1, col, ' ', COLOR_NORMAL);
-    cursor_row = VGA_HEIGHT - 1;
-}
-
-static void put_char(char c)
-{
-    if (c == '\n') {
-        cursor_col = 0;
-        cursor_row++;
-    } else {
-        put_at(cursor_row, cursor_col, c, text_color);
-        if (++cursor_col == VGA_WIDTH) {
-            cursor_col = 0;
-            cursor_row++;
-        }
-    }
-    scroll_if_needed();
-}
-
-static void print(const char *s)
-{
-    while (*s)
-        put_char(*s++);
-}
-
-/* 32ビットの数を 0x0000ABCD の形で表示する */
-static void print_hex(uint32_t value)
-{
-    static const char digits[] = "0123456789ABCDEF";
-    print("0x");
-    for (int shift = 28; shift >= 0; shift -= 4)
-        put_char(digits[(value >> shift) & 0xF]);
-}
-
-/* 初期値のないグローバル変数。entry.asm が .bss を0で埋めるので 0 のはず */
-static uint32_t boot_count;
 
 void kmain(void)
 {
-    clear_screen();
+    vga_clear();
+    vga_set_color(COLOR_TITLE);
+    vga_print(" hobby-os                                                                       ");
+    vga_set_color(COLOR_NORMAL);
+    vga_print("\n");
 
-    text_color = COLOR_TITLE;
-    print(" hobby-os                                                                       ");
-    text_color = COLOR_NORMAL;
+    vga_print("PIC      : remap IRQ 0-15 to interrupt 32-47 ... ");
+    pic_init();
+    vga_print("ok\n");
 
-    print("\nHello from C!\n\n");
+    vga_print("IDT      : register interrupt handlers 0-47 ... ");
+    idt_init();
+    vga_print("ok\n");
 
-    print("kmain()      is at ");
-    print_hex((uint32_t)(uintptr_t)kmain);
-    print("   (machine code, from 0x8000)\n");
+    vga_print("Timer    : IRQ0, ");
+    vga_print_dec(TIMER_HZ);
+    vga_print(" Hz ... ");
+    timer_init();
+    vga_print("ok\n");
 
-    print("VRAM         is at ");
-    print_hex((uint32_t)(uintptr_t)vga);
-    print("   (text screen memory)\n");
+    vga_print("Keyboard : IRQ1 ... ");
+    keyboard_init();
+    vga_print("ok\n");
 
-    print("boot_count   = ");
-    print_hex(boot_count);
-    print("   (.bss is zero-cleared)\n\n");
+    interrupts_enable();        /* ここから割り込みが来るようになる */
 
-    text_color = COLOR_OK;
-    print("32-bit protected mode + C kernel: OK\n");
-    text_color = COLOR_NORMAL;
+    vga_set_color(COLOR_OK);
+    vga_print("\nInterrupts enabled. Type something!\n\n");
+    vga_set_color(COLOR_NORMAL);
+    vga_print("> ");
+
+    uint32_t last_sec = (uint32_t)-1;
+    for (;;) {
+        /* キーボードの割り込みがバッファに入れた文字を表示する */
+        int c;
+        while ((c = keyboard_getchar()) >= 0) {
+            vga_putchar((char)c);
+            if (c == '\n')
+                vga_print("> ");
+        }
+
+        /* 1秒ごとに時間の表示を更新する */
+        uint32_t ticks = timer_ticks();
+        if (ticks / TIMER_HZ != last_sec) {
+            last_sec = ticks / TIMER_HZ;
+            show_uptime(ticks);
+        }
+
+        cpu_halt();             /* 次の割り込み(最低でも10ミリ秒後のタイマー)まで休む */
+    }
 }
