@@ -43,16 +43,23 @@ $(BUILD)/kernel.bin: $(BUILD)/kernel.elf
 		echo "カーネル($$size バイト)が大きすぎます。Makefile の LOAD_SECTORS を増やしてください"; \
 		rm -f $@; exit 1; fi
 
-$(BUILD)/kernel.elf: $(BUILD)/entry.o $(BUILD)/kernel.o kernel/linker.ld
-	ld $(LDFLAGS) -o $@ $(BUILD)/entry.o $(BUILD)/kernel.o
+# kernel/ の中の .c と .asm を全部カーネルに入れる(ファイルを増やしても書き足さなくてよい)
+KERNEL_OBJS := $(patsubst kernel/%.c,$(BUILD)/kernel/%.o,$(wildcard kernel/*.c)) \
+               $(patsubst kernel/%.asm,$(BUILD)/kernel/%.asm.o,$(wildcard kernel/*.asm))
 
-$(BUILD)/entry.o: kernel/entry.asm Makefile | $(BUILD)
+$(BUILD)/kernel.elf: $(KERNEL_OBJS) kernel/linker.ld
+	ld $(LDFLAGS) -o $@ $(KERNEL_OBJS)
+
+# -MMD -MP: どの .h を読み込んだかを .d ファイルに記録し、.h を変えたときも作り直す
+$(BUILD)/kernel/%.o: kernel/%.c Makefile | $(BUILD)/kernel
+	gcc $(CFLAGS) -MMD -MP -c $< -o $@
+
+$(BUILD)/kernel/%.asm.o: kernel/%.asm Makefile | $(BUILD)/kernel
 	nasm -f elf32 $< -o $@
 
-$(BUILD)/kernel.o: kernel/kernel.c Makefile | $(BUILD)
-	gcc $(CFLAGS) -c $< -o $@
+-include $(KERNEL_OBJS:.o=.d)
 
-$(BUILD):
+$(BUILD) $(BUILD)/kernel:
 	mkdir -p $@
 
 run: $(IMG)
