@@ -54,6 +54,7 @@
 | `CLAUDE.md` | Claude Code 向けの作業ルール |
 | `docs/setup.md` | 開発環境のセットアップ記録 |
 | `docs/01-boot.md` ほか | 段階ごとの学習ノート |
+| `docs/learning-log.md` | 学習の記録。段階ごとに分かったこととキーワードのまとめ |
 
 ## 毎回の作業の始め方
 
