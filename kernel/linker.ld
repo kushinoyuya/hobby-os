@@ -27,3 +27,9 @@ SECTIONS
     /* OS には不要な、コンパイラが付け足す情報を捨てる */
     /DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) }
 }
+
+/*
+ * スタックは 0x90000 から下へ伸びる。カーネルが大きくなってスタックの場所に
+ * 食い込まないよう、64KB 空いていなければリンクの時点で止める。
+ */
+ASSERT(__bss_end <= 0x80000, "kernel + bss is too large: it would overlap the stack")

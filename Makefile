@@ -1,5 +1,6 @@
 # make      : build/os.img を作る
 # make run  : ビルドして QEMU で起動する
+# make run-ping: Linux の ping が届く構成で QEMU を起動する
 # make clean: ビルド成果物を消す
 #
 # ディスクイメージ(build/os.img)の中身:
@@ -10,8 +11,8 @@
 BUILD := build
 IMG   := $(BUILD)/os.img
 
-# ステージ1がディスクから読み込むセクタ数(ステージ2 + カーネル)
-LOAD_SECTORS := 32
+# ステージ1がディスクから読み込むセクタ数(ステージ2 + カーネル)。256 セクタ = 128KB
+LOAD_SECTORS := 256
 KERNEL_MAX   := $(shell echo $$(( ($(LOAD_SECTORS) - 1) * 512 )))
 
 NASMFLAGS := -f bin -DLOAD_SECTORS=$(LOAD_SECTORS)
@@ -73,7 +74,11 @@ QEMU_NET := -netdev user,id=net0 -device rtl8139,netdev=net0 \
 run: $(IMG)
 	qemu-system-x86_64 -drive format=raw,file=$(IMG) $(QEMU_NET)
 
+# 本物の Linux の ping を自作OSへ届ける実験室(user モードは外からの ping を通さないため)
+run-ping: $(IMG)
+	bash tools/ping-lab.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all run clean
+.PHONY: all run run-ping clean

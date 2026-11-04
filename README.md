@@ -4,7 +4,7 @@
 
 ゴール: 自作OSの上で自作の Web サーバーを動かし、Windows のブラウザからページを開く。最後に `Host` ヘッダーでサイトを振り分けて、Apache の VirtualHost のしくみを自分で再現する。
 
-現在の到達点: ⑥ ネットワークカードができた。PCI バスから QEMU の仮想 NIC(RTL8139)を見つけ、Ethernet フレームを送受信できる。`nettest` コマンドで ARP の問い合わせを送り、返事を受け取れる。
+現在の到達点: ⑦ ping が通るようになった。Ethernet / ARP / IP / ICMP の層を作り、自作OSから `ping` を打てて、`make run-ping` の中では本物の Linux の `ping` に自作OSが答える。
 
 **再開するときは [docs/progress.md](docs/progress.md)(進捗メモ・やり残し)から読む。**
 
@@ -18,7 +18,7 @@
 | ④ 割り込み | 割り込みのしくみ、タイマー、キーボード | ✅ [ノート](docs/04-interrupts.md) |
 | ⑤ メモリ管理 | メモリを確保・解放できるようにする | ✅ [ノート](docs/05-memory.md) |
 | ⑥ ネットワークカード | QEMU の仮想 NIC のドライバ、パケットの送受信 | ✅ [ノート](docs/06-network-card.md) |
-| ⑦ Ethernet / ARP / IP / ICMP | Windows から自作OSに `ping` が通る | |
+| ⑦ Ethernet / ARP / IP / ICMP | WSL の Linux から自作OSに `ping` が通る | ✅ [ノート](docs/07-network-stack.md) |
 | ⑧ TCP | 通信のつながりを作る | |
 | ⑨ HTTP サーバー | Windows のブラウザで自作OSのページが開ける | |
 | ⑩ バーチャルホスト | `Host` ヘッダーで返すサイトを切り替える | |
@@ -37,7 +37,7 @@
 | `kernel/memmap.h` | ステージ2が置いたメモリの地図(E820)の読み方 |
 | `kernel/pmm.c` | 物理メモリの管理。4KB のページ単位で貸し借りする(ビットマップ方式) |
 | `kernel/heap.c` | ヒープ。ページを切り分けて好きな大きさで貸す(`kmalloc` / `kfree`) |
-| `kernel/string.c` | `memset` / `memcpy` / `strcmp` |
+| `kernel/string.c` | `memset` / `memcpy` / `memcmp` / `strcmp` |
 | `kernel/vga.c` | 画面への文字表示 |
 | `kernel/isr.asm` | 割り込みの入り口。レジスタを保存して C を呼ぶ |
 | `kernel/idt.c` | 割り込みの登録(IDT)と振り分け、例外の表示 |
@@ -46,8 +46,14 @@
 | `kernel/keyboard.c` | キーボード。スキャンコードを文字に変換 |
 | `kernel/pci.c` | PCI バスの装置を探す・設定を読み書きする |
 | `kernel/rtl8139.c` | ネットワークカード RTL8139 のドライバ(フレームの送受信) |
+| `kernel/net.c` | ネットワークの入口(届いたフレームを取り出す)と、IP アドレスなどの設定 |
+| `kernel/ethernet.c` | Ethernet 層。中身の種類で ARP / IP に振り分ける |
+| `kernel/arp.c` | ARP。IP アドレスから MAC アドレスを調べ、問い合わせに答える |
+| `kernel/ip.c` | IP。パケットの検査と送信先の判断、チェックサム |
+| `kernel/icmp.c` | ICMP。ping の問いかけと返事 |
 | `kernel/io.h` | I/O ポートの読み書き(`inb` / `outb`、2バイト・4バイト版も) |
 | `kernel/linker.ld` | カーネルをメモリの 0x8000 番地から並べる指示書 |
+| `tools/ping-lab.sh` | 本物の Linux の `ping` を自作OSへ届ける実験室(`make run-ping`) |
 | `Makefile` | ビルドと実行の手順 |
 | `.vscode/tasks.json` | VS Code の Ctrl+Shift+B で `make run` を実行する設定 |
 | `.vscode/c_cpp_properties.json` | VS Code に C のカーネル用の設定を教える |
@@ -75,6 +81,7 @@
 | やりたいこと | VS Code | ターミナル |
 |---|---|---|
 | ビルドして QEMU で起動 | **Ctrl+Shift+B** | `make run` |
+| Linux の `ping` が届く構成で起動 | | `make run-ping` |
 | ビルドだけ | Ctrl+Shift+P →「タスクの実行」→ `build` | `make` |
 | 生成物を消す | Ctrl+Shift+P →「タスクの実行」→ `clean` | `make clean` |
 

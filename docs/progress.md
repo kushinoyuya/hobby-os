@@ -2,9 +2,9 @@
 
 次に再開するときは、まずこのファイルを読む。
 
-## 現在地(2026-11-01 時点)
+## 現在地(2026-11-04 時点)
 
-**⑥ ネットワークカードまで完了。** PCI バスから RTL8139 を見つけ、Ethernet フレームを送受信できる。起動後に `nettest` と打つと、ARP の問い合わせを送って QEMU のゲートウェイ(10.0.2.2)から返事が来る様子が見られる。`pci`、`net` でカードの情報も見られる(コマンドは `help` で一覧)。
+**⑦ Ethernet / ARP / IP / ICMP まで完了。** 自作OSから `ping 10.0.2.2` が打てて、`make run-ping` の中では本物の Linux の `ping 10.0.2.15` に自作OSが答える。`arp` で覚えた MAC アドレス、`netlog on` で流れるフレームが見られる(コマンドは `help` で一覧)。
 
 | 段階 | 状態 | ノート |
 |---|---|---|
@@ -14,8 +14,9 @@
 | ④ 割り込み | ✅ | [04-interrupts.md](04-interrupts.md) |
 | ⑤ メモリ管理 | ✅ | [05-memory.md](05-memory.md) |
 | ⑥ ネットワークカード | ✅ | [06-network-card.md](06-network-card.md) |
-| ⑦ Ethernet / ARP / IP / ICMP | **次はここ** | |
-| ⑧〜⑩ | TCP → HTTP サーバー → バーチャルホスト | |
+| ⑦ Ethernet / ARP / IP / ICMP | ✅ | [07-network-stack.md](07-network-stack.md) |
+| ⑧ TCP | **次はここ** | |
+| ⑨〜⑩ | HTTP サーバー → バーチャルホスト | |
 
 ゴール: 自作OSの上で自作の Web サーバーを動かし、`Host` ヘッダーで振り分けて Apache の VirtualHost のしくみを再現する。
 
@@ -36,11 +37,13 @@
 
 ## やり残し・保留中のこと
 
-- [ ] docs/01〜06 を読んで理解する(特に 03〜06)。復習には [learning-log.md](learning-log.md) のキーワードと「自分で確かめること」を使う
+- [ ] docs/01〜07 を読んで理解する(特に 03〜07)。復習には [learning-log.md](learning-log.md) のキーワードと「自分で確かめること」を使う
 - [x] ④ と ⑤ のコミットを GitHub に push する(2026-10-31 済み)
 - [ ] ⑥ を push する(コミットは済み)
-- [ ] ⑦ の前に: カーネルが約13KB で、読み込める上限 15.5KB に近い。ブートローダーの読み込み量を増やす
-- [ ] ⑦ の前に: Windows から ping を届ける方法を決める(QEMU の user モードは外からの ping を通さない)
+- [ ] ⑦ とブートローダーの修正をコミット・push する
+- [x] ブートローダーの読み込み量を増やす(2026-11-04 済み。上限 128KB、カーネルは今 約18KB)
+- [x] 外から ping を届ける方法: WSL の Linux から `make run-ping` で打つことにした(2026-11-04。理由は [07-network-stack.md](07-network-stack.md) の 6 節)
+- [ ] ⑨ の前に: QEMU の user モードの hostfwd で、Windows のブラウザから TCP が届くか確かめる
 - [ ] 各ノートに「理解度チェック」の問題を付けるか → 未回答
 - [ ] 並行して WSL の Ubuntu で本物の Apache + VirtualHost を動かす練習をするか → 未回答
 - [ ] コミットのメールアドレスを GitHub の noreply アドレスに切り替えるか → 未回答
