@@ -23,6 +23,7 @@ void vga_putchar(char c);               /* '\n' は改行、'\b' は1文字消�
 void vga_print(const char *s);
 void vga_print_hex(uint32_t value);     /* 0x0000ABCD の形 */
 void vga_print_dec(uint32_t value);     /* 10進数 */
+void vga_print_hexn(uint32_t value, int digits);  /* 16進数を digits 桁で("0x" なし) */
 
 /* カーソルを動かさずに、決まった位置に文字列を書く(ステータス表示用) */
 void vga_write_at(int row, int col, const char *s, uint8_t color);

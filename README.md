@@ -4,7 +4,7 @@
 
 ゴール: 自作OSの上で自作の Web サーバーを動かし、Windows のブラウザからページを開く。最後に `Host` ヘッダーでサイトを振り分けて、Apache の VirtualHost のしくみを自分で再現する。
 
-現在の到達点: ⑤ メモリ管理ができた。BIOS から聞いたメモリの地図をもとに、ページ単位(`pmm_alloc`)と好きな大きさ(`kmalloc` / `kfree`)でメモリを貸し借りできる。`mem` コマンドで様子が見られる。
+現在の到達点: ⑥ ネットワークカードができた。PCI バスから QEMU の仮想 NIC(RTL8139)を見つけ、Ethernet フレームを送受信できる。`nettest` コマンドで ARP の問い合わせを送り、返事を受け取れる。
 
 **再開するときは [docs/progress.md](docs/progress.md)(進捗メモ・やり残し)から読む。**
 
@@ -17,7 +17,7 @@
 | ③ 32ビットモードとC言語 | プロテクトモードに切り替え、C のカーネルを動かす | ✅ [ノート](docs/03-protected-mode.md) |
 | ④ 割り込み | 割り込みのしくみ、タイマー、キーボード | ✅ [ノート](docs/04-interrupts.md) |
 | ⑤ メモリ管理 | メモリを確保・解放できるようにする | ✅ [ノート](docs/05-memory.md) |
-| ⑥ ネットワークカード | QEMU の仮想 NIC のドライバ、パケットの送受信 | |
+| ⑥ ネットワークカード | QEMU の仮想 NIC のドライバ、パケットの送受信 | ✅ [ノート](docs/06-network-card.md) |
 | ⑦ Ethernet / ARP / IP / ICMP | Windows から自作OSに `ping` が通る | |
 | ⑧ TCP | 通信のつながりを作る | |
 | ⑨ HTTP サーバー | Windows のブラウザで自作OSのページが開ける | |
@@ -44,7 +44,9 @@
 | `kernel/pic.c` | 割り込みコントローラ(PIC)の設定 |
 | `kernel/timer.c` | タイマー(PIT)。OS の時計 |
 | `kernel/keyboard.c` | キーボード。スキャンコードを文字に変換 |
-| `kernel/io.h` | I/O ポートの読み書き(`inb` / `outb`) |
+| `kernel/pci.c` | PCI バスの装置を探す・設定を読み書きする |
+| `kernel/rtl8139.c` | ネットワークカード RTL8139 のドライバ(フレームの送受信) |
+| `kernel/io.h` | I/O ポートの読み書き(`inb` / `outb`、2バイト・4バイト版も) |
 | `kernel/linker.ld` | カーネルをメモリの 0x8000 番地から並べる指示書 |
 | `Makefile` | ビルドと実行の手順 |
 | `.vscode/tasks.json` | VS Code の Ctrl+Shift+B で `make run` を実行する設定 |

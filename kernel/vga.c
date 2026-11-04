@@ -91,6 +91,13 @@ void vga_print_hex(uint32_t value)
         vga_putchar(digits[(value >> shift) & 0xF]);
 }
 
+void vga_print_hexn(uint32_t value, int digits)
+{
+    static const char digits_table[] = "0123456789ABCDEF";
+    for (int shift = (digits - 1) * 4; shift >= 0; shift -= 4)
+        vga_putchar(digits_table[(value >> shift) & 0xF]);
+}
+
 void vga_print_dec(uint32_t value)
 {
     char buf[11];               /* 32ビットの最大値 4294967295 は10桁 + 終端 */

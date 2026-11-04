@@ -62,8 +62,16 @@ $(BUILD)/kernel/%.asm.o: kernel/%.asm Makefile | $(BUILD)/kernel
 $(BUILD) $(BUILD)/kernel:
 	mkdir -p $@
 
+# QEMU に付けるネットワークカード
+#   -netdev user      : QEMU の中だけの仮想ネットワーク(10.0.2.0/24、ゲートウェイ 10.0.2.2)
+#   -device rtl8139   : そこにつながる RTL8139 を1枚挿す
+#   -object filter-dump: 流れたフレームを build/net.pcap に記録する
+#                       (tcpdump -r build/net.pcap -e -n や Wireshark で見られる)
+QEMU_NET := -netdev user,id=net0 -device rtl8139,netdev=net0 \
+            -object filter-dump,id=dump0,netdev=net0,file=$(BUILD)/net.pcap
+
 run: $(IMG)
-	qemu-system-x86_64 -drive format=raw,file=$(IMG)
+	qemu-system-x86_64 -drive format=raw,file=$(IMG) $(QEMU_NET)
 
 clean:
 	rm -rf $(BUILD)
