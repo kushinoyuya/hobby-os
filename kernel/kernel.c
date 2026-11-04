@@ -3,8 +3,8 @@
  *
  * 各部品を初期化してから割り込みを有効にし、あとは
  * 「割り込みを待つ → 起きたことを処理する」をずっと繰り返す。
- * キーボードから1行ずつ読み、簡単なコマンド(help / mem / pci / net / …)を実行する。
- * ネットワークカードにフレームが届いていたら、その中身を表示する。
+ * キーボードから1行ずつ読み、簡単なコマンド(help / mem / pci / net / ping / …)を実行する。
+ * ネットワークカードにフレームが届いていたら、ネットワークの各層(net.h)に渡す。
  */
 #include <stdint.h>
 #include "vga.h"
@@ -18,6 +18,7 @@
 #include "string.h"
 #include "pci.h"
 #include "rtl8139.h"
+#include "net.h"
 
 /* 1行目(タイトルバー)の右側に、起動してからの時間を表示する */
 static void show_uptime(uint32_t ticks)
@@ -91,6 +92,9 @@ static void cmd_help(void)
     vga_print("pci    list the devices on the PCI bus\n");
     vga_print("net    show the network card (RTL8139)\n");
     vga_print("nettest  send an ARP request to 10.0.2.2 and show the reply\n");
+    vga_print("ping A.B.C.D  send 4 pings and show the replies\n");
+    vga_print("arp    show the ARP table (IP -> MAC)\n");
+    vga_print("netlog on|off  show every frame sent and received\n");
     vga_print("clear  clear the screen\n");
 }
 
@@ -226,6 +230,144 @@ static void cmd_net(void)
     vga_print(" interrupts, ");
     vga_print_dec(n->rx_errors + n->tx_errors);
     vga_print(" errors\n");
+
+    vga_print("  IP address  : ");
+    print_ip(net_my_ip);
+    vga_print("  gateway ");
+    print_ip(net_gateway);
+    vga_print("\n  answered    : ");
+    vga_print_dec(net_stats.arp_replied);
+    vga_print(" ARP, ");
+    vga_print_dec(net_stats.icmp_replied);
+    vga_print(" ping\n  IP packets  : ");
+    vga_print_dec(net_stats.ip_received);
+    vga_print(" received, ");
+    vga_print_dec(net_stats.ip_dropped + net_stats.icmp_dropped);
+    vga_print(" dropped\n");
+}
+
+/* "10.0.2.2" を4バイトにする。形が正しければ 1、おかしければ 0 */
+static int parse_ip(const char *s, uint8_t *ip)
+{
+    for (int i = 0; i < 4; i++) {
+        uint32_t value = 0;
+        int digits = 0;
+        while (*s >= '0' && *s <= '9' && digits < 4) {
+            value = value * 10 + (uint32_t)(*s++ - '0');
+            digits++;
+        }
+        if (digits == 0 || value > 255)
+            return 0;
+        ip[i] = (uint8_t)value;
+        if (i < 3 && *s++ != '.')
+            return 0;
+    }
+    return *s == '\0';
+}
+
+/* ping を4回送り、返事を待って表示する。1回の待ち時間は最大1秒 */
+static void cmd_ping(const char *arg)
+{
+    static uint16_t seq;
+    enum { PING_ID = 0x4853, PING_COUNT = 4, WAIT_TICKS = TIMER_HZ, INTERVAL_TICKS = TIMER_HZ / 2 };
+
+    uint8_t dst[4];
+    if (!parse_ip(arg, dst)) {
+        vga_print("usage: ping A.B.C.D\n");
+        return;
+    }
+    if (!rtl8139_get_info()) {
+        vga_print("no network card\n");
+        return;
+    }
+
+    int received = 0;
+    for (int i = 0; i < PING_COUNT; i++) {
+        seq++;
+        uint32_t start = timer_ticks();
+        if (icmp_send_echo(dst, PING_ID, seq) != 0) {
+            vga_print("send failed\n");
+            continue;
+        }
+
+        struct icmp_reply r;
+        int got = 0;
+        uint32_t elapsed = 0;
+        while (elapsed < WAIT_TICKS && !got) {
+            net_poll();
+            got = icmp_take_reply(PING_ID, seq, &r);
+            elapsed = timer_ticks() - start;
+            if (!got)
+                cpu_halt();
+        }
+
+        vga_print("seq=");
+        vga_print_dec(seq);
+        if (got) {
+            received++;
+            vga_print(" reply from ");
+            print_ip(r.src);
+            vga_print(" bytes=");
+            vga_print_dec(r.len);
+            vga_print(" ttl=");
+            vga_print_dec(r.ttl);
+            /* タイマーは10ミリ秒ごとなので、それより細かくは測れない */
+            if (elapsed == 0) {
+                vga_print(" time<");
+                vga_print_dec(1000 / TIMER_HZ);
+            } else {
+                vga_print(" time=");
+                vga_print_dec(elapsed * 1000 / TIMER_HZ);
+            }
+            vga_print("ms\n");
+        } else {
+            vga_print(" timeout\n");
+        }
+
+        /* 次を送るまで少し間を空ける。その間も届いたものは処理する */
+        while (i + 1 < PING_COUNT && timer_ticks() - start < INTERVAL_TICKS) {
+            net_poll();
+            cpu_halt();
+        }
+    }
+
+    vga_print_dec(PING_COUNT);
+    vga_print(" sent, ");
+    vga_print_dec(received);
+    vga_print(" received\n");
+}
+
+static void cmd_arp(void)
+{
+    int shown = 0;
+    for (int i = 0; i < ARP_TABLE_SIZE; i++) {
+        const struct arp_entry *e = arp_entry_at(i);
+        if (!e->used)
+            continue;
+        vga_print("  ");
+        print_ip(e->ip);
+        vga_print("  ");
+        print_mac(e->mac);
+        vga_putchar('\n');
+        shown++;
+    }
+    if (!shown)
+        vga_print("ARP table is empty\n");
+}
+
+/*
+ * netlog on のときのフレームの表示。入力待ちの "> " の後ろに続けて出さないよう、
+ * プロンプトにいるときは先に改行する。
+ */
+static int log_at_prompt;
+
+static void log_frame(const char *dir, const uint8_t *frame, uint32_t len)
+{
+    if (log_at_prompt) {
+        vga_putchar('\n');
+        log_at_prompt = 0;
+    }
+    show_frame(dir, frame, len);
 }
 
 /*
@@ -355,6 +497,16 @@ static void run_command(const char *line)
         cmd_net();
     } else if (strcmp(line, "nettest") == 0) {
         cmd_nettest();
+    } else if (strcmp(line, "arp") == 0) {
+        cmd_arp();
+    } else if (strcmp(line, "ping") == 0) {
+        vga_print("usage: ping A.B.C.D\n");
+    } else if (memcmp(line, "ping ", 5) == 0) {
+        cmd_ping(line + 5);
+    } else if (strcmp(line, "netlog on") == 0) {
+        net_log = log_frame;
+    } else if (strcmp(line, "netlog off") == 0) {
+        net_log = 0;
     } else if (strcmp(line, "clear") == 0) {
         vga_clear();
         draw_title();
@@ -466,19 +618,18 @@ void kmain(void)
         }
 
         /*
-         * ネットワークカードにフレームが届いていたら表示する。
+         * ネットワークカードにフレームが届いていたら、各層に処理させる。
          * 割り込みは「届いた」と知らせて CPU を起こすだけで、読み出すのはここ。
-         * 打ちかけの行があれば、表示の後に打ち直しておく。
+         * netlog でフレームを表示した後は、プロンプトと打ちかけの行を出し直す。
          */
-        static uint8_t frame[ETH_FRAME_MAX];
-        uint32_t flen;
-        while ((flen = rtl8139_receive(frame, sizeof(frame))) > 0) {
-            vga_putchar('\n');
-            show_frame("RX", frame, flen);
+        log_at_prompt = 1;
+        net_poll();
+        if (!log_at_prompt) {
             vga_print("> ");
             for (uint32_t i = 0; i < len; i++)
                 vga_putchar(line[i]);
         }
+        log_at_prompt = 0;
 
         /* 1秒ごとに時間の表示を更新する */
         uint32_t ticks = timer_ticks();

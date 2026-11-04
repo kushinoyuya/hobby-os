@@ -9,10 +9,11 @@
 [org 0x7c00]            ; このプログラムは 0x7C00 番地に置かれる前提でアドレスを計算する
 
 %ifndef LOAD_SECTORS
-%define LOAD_SECTORS 32     ; 読み込むセクタ数(ステージ2 + カーネル)。Makefile から -D で渡される
+%define LOAD_SECTORS 256    ; 読み込むセクタ数(ステージ2 + カーネル)。Makefile から -D で渡される
 %endif
 
 STAGE2_ADDR equ 0x7e00  ; ステージ2を置く番地(ブートセクタの直後)
+CHUNK_SECTORS equ 64    ; 1回の読み込みで読むセクタ数(32KB)
 
 start:
     ; セグメントレジスタとスタックを初期化する
@@ -29,13 +30,33 @@ start:
     mov si, msg_loading
     call print
 
-    ; BIOSのディスク読み込み機能(int 0x13, ah=0x42)でステージ2を読み込む。
+    ; BIOSのディスク読み込み機能(int 0x13, ah=0x42)でステージ2とカーネルを読み込む。
     ; 読み込む場所や量は、下の dap(ディスクアドレスパケット)に書いておく。
+    ;
+    ; 一度に全部は読まず、32KB ずつ繰り返す。リアルモードの番地は「セグメント:オフセット」で、
+    ; オフセットは16ビットなので、1回の読み込みでは 64KB の範囲を超えられない。
+    ; 毎回オフセットを 0 にしてセグメントを進めれば、この制限にかからない。
+load_next:
+    mov ax, [sectors_left]
+    cmp ax, CHUNK_SECTORS
+    jbe .count_ok
+    mov ax, CHUNK_SECTORS   ; 残りが多ければ、今回は 32KB だけ読む
+.count_ok:
+    mov [dap_count], ax     ; BIOS がこの欄を書き換えることがあるので、毎回書き直す
+    mov bx, ax              ; int 0x13 の後で使うので、読むセクタ数を bx に取っておく
+
     mov si, dap
     mov ah, 0x42
     mov dl, [boot_drive]
     int 0x13
     jc disk_error       ; 失敗するとキャリーフラグが立つ
+
+    sub [sectors_left], bx      ; 残りを減らす
+    add [dap_lba], bx           ; ディスク上の読む位置を進める
+    shl bx, 5                   ; セクタ数 × 512 ÷ 16 = セグメントの増やす量
+    add [dap_segment], bx       ; メモリ上の書き込み先を進める
+    cmp word [sectors_left], 0
+    jne load_next
 
     mov dl, [boot_drive]    ; ステージ2でもディスク番号を使えるように dl で渡す
     jmp 0x0000:STAGE2_ADDR  ; ステージ2へジャンプ(ここから先はもう戻ってこない)
@@ -51,14 +72,19 @@ disk_error:
 
 boot_drive:
     db 0
+sectors_left:
+    dw LOAD_SECTORS     ; あと何セクタ読むか
 
 ; ディスクアドレスパケット: int 0x13 ah=0x42 に「何をどこへ読むか」を伝える16バイトの表
 dap:
     db 0x10             ; この表の大きさ(16バイト)
     db 0                ; 予約(常に0)
-    dw LOAD_SECTORS     ; 読み込むセクタ数
-    dw STAGE2_ADDR      ; 読み込み先の番地(オフセット)
-    dw 0                ; 読み込み先の番地(セグメント)
+dap_count:
+    dw 0                ; 読み込むセクタ数(load_next が毎回書く)
+    dw 0                ; 読み込み先の番地(オフセット)。ずっと 0
+dap_segment:
+    dw STAGE2_ADDR / 16 ; 読み込み先の番地(セグメント)。番地 = セグメント × 16 + オフセット
+dap_lba:
     dq 1                ; ディスクの何セクタ目から読むか(0がブートセクタなので1から)
 
 msg_loading:
