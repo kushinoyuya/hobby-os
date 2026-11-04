@@ -15,7 +15,7 @@
 | 2026-10-29 | ④ 割り込み | タイマーとキーボード | `a12f426` |
 | 2026-10-31 | ⑤ メモリ管理 | メモリの地図、ページ、kmalloc / kfree、`mem` コマンド | `ffa49cc` |
 | 2026-11-01 | ⑥ ネットワークカード | PCI で RTL8139 を探し、フレームを送受信。`pci` / `net` / `nettest` コマンド | `90b84e8` |
-| 2026-11-04 | ⑦ Ethernet / ARP / IP / ICMP | 層に分けて作り、ping が通った。`ping` / `arp` / `netlog` コマンド、`make run-ping`。ブートローダーの読み込みを 128KB に | (未コミット) |
+| 2026-11-04 | ⑦ Ethernet / ARP / IP / ICMP | 層に分けて作り、ping が通った。`ping` / `arp` / `netlog` コマンド、`make run-ping`。ブートローダーの読み込みを 128KB に | `1955383` |
 
 ## ① 起動 — [01-boot.md](01-boot.md)
 
