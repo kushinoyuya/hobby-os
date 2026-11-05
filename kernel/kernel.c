@@ -19,6 +19,8 @@
 #include "pci.h"
 #include "rtl8139.h"
 #include "net.h"
+#include "tcp.h"
+#include "echo.h"
 
 /* 1行目(タイトルバー)の右側に、起動してからの時間を表示する */
 static void show_uptime(uint32_t ticks)
@@ -95,6 +97,11 @@ static void cmd_help(void)
     vga_print("ping A.B.C.D  send 4 pings and show the replies\n");
     vga_print("arp    show the ARP table (IP -> MAC)\n");
     vga_print("netlog on|off  show every frame sent and received\n");
+    vga_print("tcp    show TCP connections and counters\n");
+    vga_print("tcp log on|off  show every TCP segment and state change\n");
+    vga_print("tcp drop N  drop every Nth TCP segment on purpose (0 = stop)\n");
+    vga_print("tcp isn N   use N as the first sequence number of the next connection\n");
+    vga_print("echo on|off  start / stop the echo server on port 7\n");
     vga_print("clear  clear the screen\n");
 }
 
@@ -370,6 +377,156 @@ static void log_frame(const char *dir, const uint8_t *frame, uint32_t len)
     show_frame(dir, frame, len);
 }
 
+/* ---- TCP(⑧) ---- */
+
+static void log_newline_if_at_prompt(void)
+{
+    if (log_at_prompt) {
+        vga_putchar('\n');
+        log_at_prompt = 0;
+    }
+}
+
+/* tcp log on のときのセグメントの表示。例: RX 10.0.2.2:50000 SYN seq=100 ack=0 win=64240 len=0 */
+static void log_tcp_segment(const char *dir, const uint8_t *peer_ip, uint16_t peer_port,
+                            uint8_t flags, uint32_t seq, uint32_t ack, uint16_t wnd, uint32_t len)
+{
+    static const struct { uint8_t bit; const char *name; } names[] = {
+        { TCP_SYN, "SYN" }, { TCP_FIN, "FIN" }, { TCP_RST, "RST" },
+        { TCP_PSH, "PSH" }, { TCP_ACK, "ACK" },
+    };
+
+    log_newline_if_at_prompt();
+    vga_set_color(dir[2] == '!' ? COLOR_ERROR : COLOR_OK);  /* わざと落としたものは目立たせる */
+    vga_print(dir);
+    vga_set_color(COLOR_NORMAL);
+    vga_putchar(' ');
+    print_ip(peer_ip);
+    vga_putchar(':');
+    vga_print_dec(peer_port);
+    int first = 1;
+    for (unsigned i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        if (flags & names[i].bit) {
+            vga_putchar(first ? ' ' : ',');
+            vga_print(names[i].name);
+            first = 0;
+        }
+    }
+    vga_print(" seq=");
+    vga_print_dec(seq);
+    vga_print(" ack=");
+    vga_print_dec(ack);
+    vga_print(" win=");
+    vga_print_dec(wnd);
+    vga_print(" len=");
+    vga_print_dec(len);
+    vga_putchar('\n');
+}
+
+static void log_tcp_state(int id, enum tcp_state from, enum tcp_state to)
+{
+    log_newline_if_at_prompt();
+    vga_print("  conn ");
+    vga_print_dec((uint32_t)id);
+    vga_print(": ");
+    vga_print(tcp_state_name(from));
+    vga_print(" -> ");
+    vga_print(tcp_state_name(to));
+    vga_putchar('\n');
+}
+
+static void cmd_tcp_show(void)
+{
+    vga_print("echo server: ");
+    vga_print(echo_running() ? "on" : "off");
+    vga_print(" (port ");
+    vga_print_dec(ECHO_PORT);
+    vga_print(")\n");
+
+    int shown = 0;
+    for (int i = 0; i < TCP_MAX_CONNS; i++) {
+        struct tcp_info t;
+        tcp_get_info(i, &t);
+        if (t.state == TCP_FREE)
+            continue;
+        vga_print("  ");
+        vga_print_dec((uint32_t)i);
+        vga_print(": :");
+        vga_print_dec(t.local_port);
+        vga_print(" <- ");
+        print_ip(t.peer_ip);
+        vga_putchar(':');
+        vga_print_dec(t.peer_port);
+        vga_putchar(' ');
+        vga_print(tcp_state_name(t.state));
+        vga_print(" rx=");
+        vga_print_dec(t.rx_len);
+        vga_print(" tx=");
+        vga_print_dec(t.tx_len);
+        vga_putchar('\n');
+        shown++;
+    }
+    if (!shown)
+        vga_print("  no connections\n");
+
+    vga_print("segments: ");
+    vga_print_dec(tcp_stats.segs_in);
+    vga_print(" in, ");
+    vga_print_dec(tcp_stats.segs_out);
+    vga_print(" out, ");
+    vga_print_dec(tcp_stats.bad);
+    vga_print(" bad, ");
+    vga_print_dec(tcp_stats.out_of_order);
+    vga_print(" out of order\nretransmits: ");
+    vga_print_dec(tcp_stats.retransmits);
+    vga_print(" timeout, ");
+    vga_print_dec(tcp_stats.fast_retransmits);
+    vga_print(" fast\nRST sent: ");
+    vga_print_dec(tcp_stats.rst_sent);
+    vga_print(", SYN dropped: ");
+    vga_print_dec(tcp_stats.syn_dropped);
+    vga_print(", dropped on purpose: ");
+    vga_print_dec(tcp_stats.test_dropped);
+    vga_putchar('\n');
+}
+
+/* 10進数の文字列を数にする。形が正しければ 1、おかしければ 0 */
+static int parse_u32(const char *s, uint32_t *out)
+{
+    uint64_t value = 0;
+    if (*s == '\0')
+        return 0;
+    for (; *s; s++) {
+        if (*s < '0' || *s > '9')
+            return 0;
+        value = value * 10 + (uint32_t)(*s - '0');
+        if (value > 0xFFFFFFFFu)
+            return 0;
+    }
+    *out = (uint32_t)value;
+    return 1;
+}
+
+static void cmd_tcp(const char *arg)
+{
+    uint32_t n;
+    if (*arg == '\0') {
+        cmd_tcp_show();
+    } else if (strcmp(arg, "log on") == 0) {
+        tcp_seg_log = log_tcp_segment;
+        tcp_state_log = log_tcp_state;
+    } else if (strcmp(arg, "log off") == 0) {
+        tcp_seg_log = 0;
+        tcp_state_log = 0;
+    } else if (memcmp(arg, "drop ", 5) == 0 && parse_u32(arg + 5, &n)) {
+        tcp_set_drop_every(n);
+    } else if (memcmp(arg, "isn ", 4) == 0 && parse_u32(arg + 4, &n)) {
+        tcp_set_next_isn(n);
+    } else {
+        vga_print("usage: tcp | tcp log on|off | tcp drop N | tcp isn N\n");
+    }
+}
+
 /*
  * 送受信の確認: 「10.0.2.2 の MAC アドレスを知っている人は?」という ARP の問い合わせを
  * 手で組み立てて、全員宛て(ブロードキャスト)に送る。
@@ -507,6 +664,15 @@ static void run_command(const char *line)
         net_log = log_frame;
     } else if (strcmp(line, "netlog off") == 0) {
         net_log = 0;
+    } else if (strcmp(line, "tcp") == 0) {
+        cmd_tcp("");
+    } else if (memcmp(line, "tcp ", 4) == 0) {
+        cmd_tcp(line + 4);
+    } else if (strcmp(line, "echo on") == 0) {
+        if (echo_start() != 0)
+            vga_print("could not start\n");
+    } else if (strcmp(line, "echo off") == 0) {
+        echo_stop();
     } else if (strcmp(line, "clear") == 0) {
         vga_clear();
         draw_title();
@@ -586,6 +752,11 @@ void kmain(void)
         vga_print("\n");
     }
 
+    vga_print("TCP      : echo server on port ");
+    vga_print_dec(ECHO_PORT);
+    vga_print(" ... ");
+    vga_print(echo_start() == 0 ? "ok\n" : "failed\n");
+
     interrupts_enable();       /* ここから割り込みが来るようになる */
 
     vga_set_color(COLOR_OK);
@@ -620,10 +791,12 @@ void kmain(void)
         /*
          * ネットワークカードにフレームが届いていたら、各層に処理させる。
          * 割り込みは「届いた」と知らせて CPU を起こすだけで、読み出すのはここ。
+         * その後、TCP の上で動くアプリ(エコーサーバー)に、届いたデータを処理させる。
          * netlog でフレームを表示した後は、プロンプトと打ちかけの行を出し直す。
          */
         log_at_prompt = 1;
         net_poll();
+        echo_poll();
         if (!log_at_prompt) {
             vga_print("> ");
             for (uint32_t i = 0; i < len; i++)

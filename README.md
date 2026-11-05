@@ -4,7 +4,7 @@
 
 ゴール: 自作OSの上で自作の Web サーバーを動かし、Windows のブラウザからページを開く。最後に `Host` ヘッダーでサイトを振り分けて、Apache の VirtualHost のしくみを自分で再現する。
 
-現在の到達点: ⑦ ping が通るようになった。Ethernet / ARP / IP / ICMP の層を作り、自作OSから `ping` を打てて、`make run-ping` の中では本物の Linux の `ping` に自作OSが答える。
+現在の到達点: ⑧ TCP が動くようになった。3ウェイハンドシェイク、再送、フロー制御、切断を作り、自作OSのエコーサーバーと本物の Linux の `nc` の間で 1 MB のデータが壊れずに往復する。
 
 **再開するときは [docs/progress.md](docs/progress.md)(進捗メモ・やり残し)から読む。**
 
@@ -19,7 +19,7 @@
 | ⑤ メモリ管理 | メモリを確保・解放できるようにする | ✅ [ノート](docs/05-memory.md) |
 | ⑥ ネットワークカード | QEMU の仮想 NIC のドライバ、パケットの送受信 | ✅ [ノート](docs/06-network-card.md) |
 | ⑦ Ethernet / ARP / IP / ICMP | WSL の Linux から自作OSに `ping` が通る | ✅ [ノート](docs/07-network-stack.md) |
-| ⑧ TCP | 通信のつながりを作る | |
+| ⑧ TCP | 通信のつながりを作る | ✅ [ノート](docs/08-tcp.md) |
 | ⑨ HTTP サーバー | Windows のブラウザで自作OSのページが開ける | |
 | ⑩ バーチャルホスト | `Host` ヘッダーで返すサイトを切り替える | |
 
@@ -51,9 +51,13 @@
 | `kernel/arp.c` | ARP。IP アドレスから MAC アドレスを調べ、問い合わせに答える |
 | `kernel/ip.c` | IP。パケットの検査と送信先の判断、チェックサム |
 | `kernel/icmp.c` | ICMP。ping の問いかけと返事 |
+| `kernel/tcp.c` | TCP。つながりの管理、再送、フロー制御。使い方は `kernel/tcp.h` |
+| `kernel/echo.c` | エコーサーバー(ポート 7)。TCP の上で動く最初のアプリ |
 | `kernel/io.h` | I/O ポートの読み書き(`inb` / `outb`、2バイト・4バイト版も) |
 | `kernel/linker.ld` | カーネルをメモリの 0x8000 番地から並べる指示書 |
-| `tools/ping-lab.sh` | 本物の Linux の `ping` を自作OSへ届ける実験室(`make run-ping`) |
+| `tools/ping-lab.sh` | 本物の Linux の `ping` や `nc` を自作OSへ届ける実験室(`make run-ping`) |
+| `tools/tcp-test.py` | TCP の自動テスト。Python が相手役になる(`make test-tcp`) |
+| `tools/tcp-linux-test.sh` | 本物の Linux の `nc` とつなぐ自動テスト(`make test-tcp-linux`) |
 | `Makefile` | ビルドと実行の手順 |
 | `.vscode/tasks.json` | VS Code の Ctrl+Shift+B で `make run` を実行する設定 |
 | `.vscode/c_cpp_properties.json` | VS Code に C のカーネル用の設定を教える |
@@ -81,7 +85,8 @@
 | やりたいこと | VS Code | ターミナル |
 |---|---|---|
 | ビルドして QEMU で起動 | **Ctrl+Shift+B** | `make run` |
-| Linux の `ping` が届く構成で起動 | | `make run-ping` |
+| Linux の `ping` や `nc` が届く構成で起動 | | `make run-ping` |
+| TCP の自動テスト | | `make test-tcp` / `make test-tcp-linux` |
 | ビルドだけ | Ctrl+Shift+P →「タスクの実行」→ `build` | `make` |
 | 生成物を消す | Ctrl+Shift+P →「タスクの実行」→ `clean` | `make clean` |
 

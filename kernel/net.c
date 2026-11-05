@@ -3,6 +3,7 @@
  */
 #include "net.h"
 #include "rtl8139.h"
+#include "tcp.h"
 
 const uint8_t net_my_ip[4]   = { 10, 0, 2, 15 };
 const uint8_t net_gateway[4] = { 10, 0, 2, 2 };
@@ -26,5 +27,6 @@ int net_poll(void)
         eth_input(frame, len);
         count++;
     }
+    tcp_tick();         /* 何も届かなくても、再送の時間切れは調べる */
     return count;
 }
