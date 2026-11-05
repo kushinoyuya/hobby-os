@@ -14,6 +14,7 @@
 #include "net.h"
 #include "rtl8139.h"
 #include "string.h"
+#include "tcp.h"
 
 #define IP_HDR_LEN   20
 #define IP_MAX_LEN   (ETH_FRAME_MAX - ETH_HDR_LEN)  /* 1500 バイト */
@@ -32,10 +33,9 @@ static uint8_t pending_hop[4];
  * 2バイトずつ足し、あふれた分を下に足し戻して、最後に全ビットを反転する。
  * 受け取った側がチェックサムの欄も含めて計算すると、壊れていなければ 0 になる。
  */
-uint16_t net_checksum(const void *data, uint32_t len)
+uint32_t net_sum(uint32_t sum, const void *data, uint32_t len)
 {
     const uint8_t *p = data;
-    uint32_t sum = 0;
 
     while (len > 1) {
         sum += get_be16(p);
@@ -44,10 +44,19 @@ uint16_t net_checksum(const void *data, uint32_t len)
     }
     if (len == 1)
         sum += (uint32_t)p[0] << 8;     /* 奇数のときは、最後に 0 を補って考える */
+    return sum;
+}
 
+uint16_t net_sum_finish(uint32_t sum)
+{
     while (sum >> 16)
         sum = (sum & 0xFFFF) + (sum >> 16);
     return (uint16_t)~sum;
+}
+
+uint16_t net_checksum(const void *data, uint32_t len)
+{
+    return net_sum_finish(net_sum(0, data, len));
 }
 
 void ip_input(const uint8_t *packet, uint32_t len)
@@ -90,6 +99,8 @@ void ip_input(const uint8_t *packet, uint32_t len)
 
     if (packet[9] == IP_PROTO_ICMP)
         icmp_input(packet + 12, packet[8], payload, payload_len);
+    else if (packet[9] == IP_PROTO_TCP)
+        tcp_input(packet + 12, payload, payload_len);
 }
 
 /* dst へ直接届くか判断して、次に渡す相手(ネクストホップ)を決める */

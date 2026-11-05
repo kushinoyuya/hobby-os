@@ -4,6 +4,7 @@
  * 受信は下の層から上へ、送信は上の層から下へ、見出しを外したり付けたりしながら進む。
  *
  *   ICMP (icmp.c)   ping の問いかけと返事
+ *   TCP  (tcp.c)    確実な「つながり」(使い方は tcp.h)
  *     ↕
  *   IP   (ip.c)     どの IP アドレスの相手へ届けるか
  *     ↕  ↖
@@ -88,6 +89,8 @@ const struct arp_entry *arp_entry_at(int i);
 /* ---- IP(ip.c) ---- */
 #define IP_PROTO_ICMP 1
 
+#define IP_PROTO_TCP  6
+
 void ip_input(const uint8_t *packet, uint32_t len);
 
 /* payload を IP パケットにして dst へ送る。相手の MAC が未知なら ARP の返事を待ってから送る */
@@ -96,8 +99,12 @@ int ip_send(const uint8_t *dst, uint8_t protocol, const void *payload, uint32_t 
 /* ARP が ip の MAC アドレスを覚えたときに呼ばれる。待たせていたパケットを送る */
 void ip_on_arp_learned(const uint8_t *ip);
 
-/* インターネットチェックサム(IP と ICMP で共通の、壊れていないかの検査の計算) */
+/* インターネットチェックサム(IP と ICMP と TCP で共通の、壊れていないかの検査の計算) */
 uint16_t net_checksum(const void *data, uint32_t len);
+
+/* 離れた場所にあるデータをまとめて計算するときの部品(TCP の疑似ヘッダーなど) */
+uint32_t net_sum(uint32_t sum, const void *data, uint32_t len);
+uint16_t net_sum_finish(uint32_t sum);
 
 /* ---- ICMP(icmp.c) ---- */
 struct icmp_reply {
