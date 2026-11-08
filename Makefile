@@ -2,6 +2,7 @@
 # make run  : ビルドして QEMU で起動する
 # make run-ping: Linux の ping と nc が届く構成で QEMU を起動する
 # make test-tcp: TCP の自動テストを実行する
+# make test-http: Web サーバーの自動テストを実行する
 # make clean: ビルド成果物を消す
 #
 # ディスクイメージ(build/os.img)の中身:
@@ -69,8 +70,11 @@ $(BUILD) $(BUILD)/kernel:
 #   -device rtl8139   : そこにつながる RTL8139 を1枚挿す
 #   -object filter-dump: 流れたフレームを build/net.pcap に記録する
 #                       (tcpdump -r build/net.pcap -e -n や Wireshark で見られる)
-#   hostfwd           : この PC の 127.0.0.1:7777 への接続を、自作OSのポート 7 へ転送する
-QEMU_NET := -netdev user,id=net0,hostfwd=tcp:127.0.0.1:7777-:7 -device rtl8139,netdev=net0 \
+#   hostfwd           : この PC の 127.0.0.1:7777 への接続を、自作OSのポート 7(エコー)へ、
+#                       127.0.0.1:8080 への接続をポート 80(Web)へ転送する。
+#                       Windows のブラウザで http://localhost:8080/ を開くと届く
+QEMU_NET := -netdev user,id=net0,hostfwd=tcp:127.0.0.1:7777-:7,hostfwd=tcp:127.0.0.1:8080-:80 \
+            -device rtl8139,netdev=net0 \
             -object filter-dump,id=dump0,netdev=net0,file=$(BUILD)/net.pcap
 
 run: $(IMG)
@@ -88,7 +92,11 @@ test-tcp: $(IMG)
 test-tcp-linux: $(IMG)
 	bash tools/tcp-linux-test.sh
 
+# Web サーバーの自動テスト(実験室の中から curl と Python でリクエストを送る。約2分かかる)
+test-http: $(IMG)
+	QEMU_DISPLAY="-display none" LAB_COMMAND="python3 tools/http-test.py" bash tools/ping-lab.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all run run-ping test-tcp test-tcp-linux clean
+.PHONY: all run run-ping test-tcp test-tcp-linux test-http clean

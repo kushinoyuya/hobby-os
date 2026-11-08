@@ -54,6 +54,7 @@ int tcp_send(int id, const void *data, uint32_t len);
 
 uint32_t tcp_send_space(int id);                /* 送信バッファの空き */
 void tcp_close(int id);                         /* 残りのデータを送ってから FIN を出す */
+void tcp_abort(int id);                         /* RST を出してすぐ切る。送り残しは捨てる */
 
 /* ---- ネットワークの層から呼ばれる ---- */
 

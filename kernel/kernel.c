@@ -21,6 +21,7 @@
 #include "net.h"
 #include "tcp.h"
 #include "echo.h"
+#include "http.h"
 
 /* 1行目(タイトルバー)の右側に、起動してからの時間を表示する */
 static void show_uptime(uint32_t ticks)
@@ -102,6 +103,9 @@ static void cmd_help(void)
     vga_print("tcp drop N  drop every Nth TCP segment on purpose (0 = stop)\n");
     vga_print("tcp isn N   use N as the first sequence number of the next connection\n");
     vga_print("echo on|off  start / stop the echo server on port 7\n");
+    vga_print("http   show the web server (port 80) counters\n");
+    vga_print("http on|off  start / stop the web server\n");
+    vga_print("http log on|off  show every HTTP request\n");
     vga_print("clear  clear the screen\n");
 }
 
@@ -527,6 +531,81 @@ static void cmd_tcp(const char *arg)
     }
 }
 
+/* ---- Web サーバー(⑨) ---- */
+
+/* 相手から来た文字列を表示する。画面を乱す制御文字は ? にし、長すぎる分は切る */
+static void print_untrusted(const char *s, uint32_t max)
+{
+    uint32_t i = 0;
+    for (; s[i] && i < max; i++)
+        vga_putchar(s[i] >= ' ' && s[i] < 0x7F ? s[i] : '?');
+    if (s[i])
+        vga_print("...");
+}
+
+/* http log on のときの表示。例: HTTP 10.0.2.2:50000 GET / host=localhost:8080 -> 200 (812 bytes) */
+static void log_http(const uint8_t *peer_ip, uint16_t peer_port, const char *method,
+                     const char *path, const char *host, int status, uint32_t body_len)
+{
+    log_newline_if_at_prompt();
+    vga_set_color(status < 400 ? COLOR_OK : COLOR_ERROR);
+    vga_print("HTTP");
+    vga_set_color(COLOR_NORMAL);
+    vga_putchar(' ');
+    print_ip(peer_ip);
+    vga_putchar(':');
+    vga_print_dec(peer_port);
+    vga_putchar(' ');
+    print_untrusted(method, 8);
+    vga_putchar(' ');
+    print_untrusted(path, 30);
+    vga_print(" host=");
+    print_untrusted(*host ? host : "-", 24);
+    vga_print(" -> ");
+    vga_print_dec((uint32_t)status);
+    vga_print(" (");
+    vga_print_dec(body_len);
+    vga_print(" bytes)\n");
+}
+
+static void cmd_http(const char *arg)
+{
+    if (*arg == '\0') {
+        vga_print("web server: ");
+        vga_print(http_running() ? "on" : "off");
+        vga_print(" (port ");
+        vga_print_dec(HTTP_PORT);
+        vga_print(")\nconnections: ");
+        vga_print_dec(http_stats.connections);
+        vga_print(", requests: ");
+        vga_print_dec(http_stats.requests);
+        vga_print(" (2xx ");
+        vga_print_dec(http_stats.status_2xx);
+        vga_print(", 4xx ");
+        vga_print_dec(http_stats.status_4xx);
+        vga_print(", 5xx ");
+        vga_print_dec(http_stats.status_5xx);
+        vga_print(")\nreused by keep-alive: ");
+        vga_print_dec(http_stats.keepalive_reused);
+        vga_print(", timeouts: ");
+        vga_print_dec(http_stats.timeouts);
+        vga_print(", aborted: ");
+        vga_print_dec(http_stats.aborted);
+        vga_putchar('\n');
+    } else if (strcmp(arg, "on") == 0) {
+        if (http_start() != 0)
+            vga_print("could not start\n");
+    } else if (strcmp(arg, "off") == 0) {
+        http_stop();
+    } else if (strcmp(arg, "log on") == 0) {
+        http_log = log_http;
+    } else if (strcmp(arg, "log off") == 0) {
+        http_log = 0;
+    } else {
+        vga_print("usage: http | http on|off | http log on|off\n");
+    }
+}
+
 /*
  * 送受信の確認: 「10.0.2.2 の MAC アドレスを知っている人は?」という ARP の問い合わせを
  * 手で組み立てて、全員宛て(ブロードキャスト)に送る。
@@ -673,6 +752,10 @@ static void run_command(const char *line)
             vga_print("could not start\n");
     } else if (strcmp(line, "echo off") == 0) {
         echo_stop();
+    } else if (strcmp(line, "http") == 0) {
+        cmd_http("");
+    } else if (memcmp(line, "http ", 5) == 0) {
+        cmd_http(line + 5);
     } else if (strcmp(line, "clear") == 0) {
         vga_clear();
         draw_title();
@@ -757,6 +840,12 @@ void kmain(void)
     vga_print(" ... ");
     vga_print(echo_start() == 0 ? "ok\n" : "failed\n");
 
+    vga_print("HTTP     : web server on port ");
+    vga_print_dec(HTTP_PORT);
+    vga_print(" ... ");
+    vga_print(http_start() == 0 ? "ok\n" : "failed\n");
+    http_log = log_http;        /* 届いたリクエストを画面に出す(http log off で止める) */
+
     interrupts_enable();       /* ここから割り込みが来るようになる */
 
     vga_set_color(COLOR_OK);
@@ -791,12 +880,13 @@ void kmain(void)
         /*
          * ネットワークカードにフレームが届いていたら、各層に処理させる。
          * 割り込みは「届いた」と知らせて CPU を起こすだけで、読み出すのはここ。
-         * その後、TCP の上で動くアプリ(エコーサーバー)に、届いたデータを処理させる。
-         * netlog でフレームを表示した後は、プロンプトと打ちかけの行を出し直す。
+         * その後、TCP の上で動くアプリ(エコーサーバーと Web サーバー)に、届いたデータを処理させる。
+         * netlog などで何か表示した後は、プロンプトと打ちかけの行を出し直す。
          */
         log_at_prompt = 1;
         net_poll();
         echo_poll();
+        http_poll();
         if (!log_at_prompt) {
             vga_print("> ");
             for (uint32_t i = 0; i < len; i++)

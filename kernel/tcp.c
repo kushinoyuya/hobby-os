@@ -956,6 +956,23 @@ void tcp_close(int id)
     tcp_output(c);
 }
 
+/*
+ * 相手がデータを受け取ってくれない(ウィンドウが 0 のまま)ときなど、
+ * FIN で丁寧に閉じても終われない相手を、RST で打ち切る。
+ */
+void tcp_abort(int id)
+{
+    struct tcp_conn *c = get_conn(id);
+    if (!c)
+        return;
+
+    c->app = APP_RELEASED;
+    if (c->state == TCP_CLOSED)
+        free_if_done(c);
+    else
+        abort_conn(c);
+}
+
 /* ---- 観察と実験 ---- */
 
 void tcp_get_info(int i, struct tcp_info *out)

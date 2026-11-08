@@ -82,8 +82,8 @@ transfer 5 "short message"
 transfer 1000000 "1 MB"
 
 # 接続を断られる(待ち受けていないポート)
-if nc -z -w 2 10.0.2.15 80 2>/dev/null; then
-    echo "FAIL  port 80 should refuse"
+if nc -z -w 2 10.0.2.15 81 2>/dev/null; then
+    echo "FAIL  port 81 should refuse"
     failed=1
 else
     echo "ok    closed port refuses"
