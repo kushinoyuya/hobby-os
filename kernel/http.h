@@ -28,10 +28,13 @@ struct http_stats {
 };
 extern struct http_stats http_stats;
 
-/* 1つのリクエストに応答するたびに呼ばれる(http log on のとき)。host は Host ヘッダーの値("" なら無し) */
+/*
+ * 1つのリクエストに応答するたびに呼ばれる(http log on のとき)。
+ * host は Host ヘッダーの値("" なら無し)、site は答えたサイトの名前("" ならサイトを選ぶ前のエラー)
+ */
 typedef void (*http_log_fn)(const uint8_t *peer_ip, uint16_t peer_port,
                             const char *method, const char *path, const char *host,
-                            int status, uint32_t body_len);
+                            const char *site, int status, uint32_t body_len);
 extern http_log_fn http_log;
 
 #endif

@@ -20,10 +20,14 @@
  *   SENDING : 応答を TCP の送信バッファに少しずつ入れる
  *   → 送り終えたら、keep-alive なら READING に戻り、そうでなければ閉じる
  *
+ * 何を返すかは、Host ヘッダーでサイトを選び(⑩ バーチャルホスト、vhost.c)、
+ * そのサイトの中からパスでファイルを選んで決める。
+ *
  * 作っていないもの: リクエストの本文(POST など)、chunked、Range、圧縮、HTTPS。
  */
 #include <stdint.h>
 #include "http.h"
+#include "vhost.h"
 #include "tcp.h"
 #include "timer.h"
 #include "string.h"
@@ -85,6 +89,14 @@ struct request {
     int  conn_close;            /* Connection: close */
     int  conn_keep_alive;       /* Connection: keep-alive */
     int  has_body;              /* Content-Length が 0 でない / Transfer-Encoding がある */
+};
+
+/* どのサイトが答えるか(⑩) */
+struct route {
+    struct vhost *site;
+    enum vhost_match how;
+    char name[VHOST_NAME_MAX];  /* 整えた Host("" なら Host がなかった) */
+    char port[VHOST_PORT_MAX];  /* Host に付いていたポート番号("" なら無し) */
 };
 
 /* TCP のつながりの番号(0〜TCP_MAX_CONNS-1)をそのまま添え字に使う */
@@ -423,7 +435,9 @@ static void respond(struct http_conn *h, const struct request *r, int status,
     h->phase = SENDING;
 }
 
-static void respond_error(struct http_conn *h, const struct request *r, int status)
+/* site はどのサイトの中のエラーか(リクエストが壊れていてサイトを選ぶ前なら 0) */
+static void respond_error(struct http_conn *h, const struct request *r, int status,
+                          const struct vhost *site)
 {
     struct out o = { h->page, 0, sizeof(h->page) };
     put_str(&o, "<!doctype html>\n<title>");
@@ -432,14 +446,90 @@ static void respond_error(struct http_conn *h, const struct request *r, int stat
     put_dec(&o, (uint32_t)status);
     put_str(&o, " ");
     put_str(&o, reason(status));
-    put_str(&o, "</h1>\n<p>hobby-os</p>\n");
+    put_str(&o, "</h1>\n<p>hobby-os");
+    if (site) {
+        put_str(&o, " (");
+        put_str(&o, site->name);            /* こちらで決めた名前なので、そのまま入れてよい */
+        put_str(&o, ")");
+    }
+    put_str(&o, "</p>\n");
     respond(h, r, status, "text/html; charset=utf-8", BODY_MEMORY, h->page, o.len);
 }
 
-static const char hello_txt[] = "Hello from hobby-os!\n";
+static const char *how_text(enum vhost_match how)
+{
+    switch (how) {
+    case MATCH_NAME:  return "ServerName と一致";
+    case MATCH_ALIAS: return "ServerAlias と一致";
+    default:          return "どれとも一致しないので、既定のサイト";
+    }
+}
 
-/* トップページ: 届いたリクエストの中身と、このつながりの様子を見せる */
-static void page_index(struct http_conn *h, int id, const struct request *r)
+/*
+ * ほかのサイトへのリンク。Host に付いていたポート番号を引き継ぐ。
+ * Windows から localhost:8080 で開いていれば http://blog.localhost:8080/ になる。
+ * port は数字だけなのを vhost_normalize で確かめてあるので、そのまま入れてよい。
+ */
+static void put_site_link(struct out *o, const char *name, const char *port)
+{
+    put_str(o, "<a href=\"http://");
+    put_str(o, name);
+    if (port[0]) {
+        put_str(o, ":");
+        put_str(o, port);
+    }
+    put_str(o, "/\">");
+    put_str(o, name);
+    put_str(o, "</a>");
+}
+
+/* サイトの一覧(名前の付いたサイトだけ。先頭の既定のサイトは除く) */
+static void put_site_list(struct out *o, const char *port)
+{
+    put_str(o, "<ul>\n");
+    for (int i = 1; i < vhost_count; i++) {
+        put_str(o, "<li>");
+        put_site_link(o, vhosts[i].name, port);
+        for (const char *const *a = vhosts[i].aliases; *a; a++) {
+            put_str(o, a == vhosts[i].aliases ? "(別名: " : "、");
+            put_str(o, *a);
+            if (!a[1])
+                put_str(o, ")");
+        }
+        put_str(o, "</li>\n");
+    }
+    put_str(o, "</ul>\n");
+}
+
+/* 既定のサイトのページ: Host に当てはまるサイトがなかったことと、サイトの一覧を見せる */
+static void page_sites(struct http_conn *h, const struct request *r, const struct route *rt)
+{
+    struct out o = { h->page, 0, sizeof(h->page) };
+    put_str(&o,
+        "<!doctype html>\n"
+        "<html lang=\"ja\"><head><meta charset=\"utf-8\"><title>hobby-os: サイトが見つかりません</title>\n"
+        "<style>body{font-family:sans-serif;margin:2em;color:#444}code{background:#eee;padding:0 .3em}</style>\n"
+        "</head><body>\n"
+        "<h1>このサイトはありません</h1>\n<p>");
+    if (r->has_host) {
+        put_str(&o, "Host ヘッダー <code>");
+        put_html(&o, r->host);
+        put_str(&o, "</code> に当てはまるサイトは、この hobby-os にはありません。");
+    } else {
+        put_str(&o, "リクエストに Host ヘッダーがありません(HTTP/1.0)。どのサイト宛てか分かりません。");
+    }
+    put_str(&o,
+        "</p>\n<p>どのサイトにも当てはまらないリクエストには、一覧の先頭にある"
+        "「既定のサイト」(このページ)が答えます。</p>\n"
+        "<h2>このサーバーにあるサイト</h2>\n");
+    put_site_list(&o, rt->port);
+    put_str(&o, "</body></html>\n");
+    respond(h, r, 200, "text/html; charset=utf-8", BODY_MEMORY, h->page, o.len);
+}
+
+/* localhost のトップページ: 届いたリクエストの中身と、このつながりの様子を見せる */
+static void page_status(struct http_conn *h, int id, const struct request *r,
+                        const struct route *rt)
 {
     struct tcp_info t;
     tcp_get_info(id, &t);
@@ -454,7 +544,11 @@ static void page_index(struct http_conn *h, int id, const struct request *r)
         "<p>このページは自作OSが返しています。</p>\n<table>\n"
         "<tr><th>Host ヘッダー</th><td>");
     put_html(&o, r->has_host ? r->host : "(なし)");
-    put_str(&o, "</td></tr>\n<tr><th>あなたの IP とポート</th><td>");
+    put_str(&o, "</td></tr>\n<tr><th>答えたサイト</th><td>");
+    put_str(&o, rt->site->name);
+    put_str(&o, "(");
+    put_str(&o, how_text(rt->how));
+    put_str(&o, ")</td></tr>\n<tr><th>あなたの IP とポート</th><td>");
     put_ip(&o, t.peer_ip);
     put_str(&o, ":");
     put_dec(&o, t.peer_port);
@@ -470,7 +564,10 @@ static void page_index(struct http_conn *h, int id, const struct request *r)
         "<p><a href=\"/hello.txt\">/hello.txt</a> ・ "
         "<a href=\"/big\">/big</a>(64KB) ・ "
         "<a href=\"/nothing\">/nothing</a>(404)</p>\n"
-        "</body></html>\n");
+        "<h2>同じサーバーにあるサイト</h2>\n"
+        "<p>同じ IP アドレスとポートで、Host ヘッダーだけを変えて開く。</p>\n");
+    put_site_list(&o, rt->port);
+    put_str(&o, "</body></html>\n");
     respond(h, r, 200, "text/html; charset=utf-8", BODY_MEMORY, h->page, o.len);
 }
 
@@ -485,9 +582,20 @@ static void handle_request(struct http_conn *h, int id, uint32_t end)
     for (uint32_t i = 0; i < h->req_len; i++)
         h->req[i] = h->req[end + i];
 
-    /* 1. 何を返すか決める */
-    enum { PAGE_ERROR, PAGE_INDEX, PAGE_HELLO, PAGE_BIG } page = PAGE_ERROR;
+    /*
+     * 1. 何を返すか決める
+     *    (1) Host ヘッダーでサイトを選ぶ(⑩ バーチャルホスト)
+     *    (2) そのサイトの中から、パスでファイルを選ぶ
+     *    同じ "/" でも、Host が違えば別のサイトの別のページになる。
+     */
+    struct route rt;
+    const struct vhost_file *file = 0;
+    rt.site = 0;
     if (status == 0) {
+        vhost_normalize(r.has_host ? r.host : "", rt.name, rt.port);
+        rt.site = vhost_find(rt.name, &rt.how);
+        rt.site->requests++;
+
         if (strcmp(r.method, "GET") != 0 && strcmp(r.method, "HEAD") != 0) {
             /* 知っているメソッドなら 405(ここでは使えない)、知らなければ 501(作っていない) */
             static const char *const known[] = {
@@ -498,17 +606,10 @@ static void handle_request(struct http_conn *h, int id, uint32_t end)
                 if (strcmp(r.method, known[i]) == 0)
                     status = 405;
             }
-        } else if (strcmp(r.path, "/") == 0) {
-            page = PAGE_INDEX;
-        } else if (strcmp(r.path, "/hello.txt") == 0) {
-            page = PAGE_HELLO;
-        } else if (strcmp(r.path, "/big") == 0) {
-            page = PAGE_BIG;
         } else {
-            status = 404;
+            file = vhost_file(rt.site, r.path);
+            status = file ? 200 : 404;
         }
-        if (page != PAGE_ERROR)
-            status = 200;
     }
 
     /*
@@ -523,21 +624,23 @@ static void handle_request(struct http_conn *h, int id, uint32_t end)
                     !r.has_body && h->served + 1 < MAX_REQUESTS;
 
     /* 3. 応答を作る */
-    switch (page) {
-    case PAGE_INDEX:
-        page_index(h, id, &r);
-        break;
-    case PAGE_HELLO:
-        respond(h, &r, 200, "text/plain; charset=utf-8", BODY_MEMORY,
-                hello_txt, sizeof(hello_txt) - 1);
-        break;
-    case PAGE_BIG:
-        respond(h, &r, 200, "text/plain; charset=utf-8", BODY_BIG,
-                0, BIG_LINES * BIG_LINE_LEN);
-        break;
-    default:
-        respond_error(h, &r, status);
-        break;
+    if (!file) {
+        respond_error(h, &r, status, rt.site);
+    } else {
+        switch (file->kind) {
+        case FILE_STATUS:
+            page_status(h, id, &r, &rt);
+            break;
+        case FILE_SITES:
+            page_sites(h, &r, &rt);
+            break;
+        case FILE_BIG:
+            respond(h, &r, 200, file->type, BODY_BIG, 0, BIG_LINES * BIG_LINE_LEN);
+            break;
+        default:
+            respond(h, &r, 200, file->type, BODY_MEMORY, file->body, str_len(file->body));
+            break;
+        }
     }
 
     http_stats.requests++;
@@ -554,7 +657,7 @@ static void handle_request(struct http_conn *h, int id, uint32_t end)
         struct tcp_info t;
         tcp_get_info(id, &t);
         http_log(t.peer_ip, t.peer_port, r.method, r.path, r.has_host ? r.host : "",
-                 status, h->body_len);
+                 rt.site ? rt.site->name : "", status, h->body_len);
     }
 }
 
@@ -676,13 +779,13 @@ static void fail(struct http_conn *h, int id, int status)
     memset(&r, 0, sizeof(r));
     h->req_len = 0;
     h->keep_alive = 0;
-    respond_error(h, &r, status);
+    respond_error(h, &r, status, 0);
     http_stats.requests++;
     http_stats.status_4xx++;
     if (http_log) {
         struct tcp_info t;
         tcp_get_info(id, &t);
-        http_log(t.peer_ip, t.peer_port, "-", "-", "", status, h->body_len);
+        http_log(t.peer_ip, t.peer_port, "-", "-", "", "", status, h->body_len);
     }
 }
 

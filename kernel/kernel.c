@@ -22,6 +22,7 @@
 #include "tcp.h"
 #include "echo.h"
 #include "http.h"
+#include "vhost.h"
 
 /* 1行目(タイトルバー)の右側に、起動してからの時間を表示する */
 static void show_uptime(uint32_t ticks)
@@ -106,6 +107,7 @@ static void cmd_help(void)
     vga_print("http   show the web server (port 80) counters\n");
     vga_print("http on|off  start / stop the web server\n");
     vga_print("http log on|off  show every HTTP request\n");
+    vga_print("vhost  list the sites (virtual hosts) and their request counts\n");
     vga_print("clear  clear the screen\n");
 }
 
@@ -543,9 +545,14 @@ static void print_untrusted(const char *s, uint32_t max)
         vga_print("...");
 }
 
-/* http log on のときの表示。例: HTTP 10.0.2.2:50000 GET / host=localhost:8080 -> 200 (812 bytes) */
+/*
+ * http log on のときの表示(80 桁に収まるよう詰めている)。例:
+ *   HTTP 10.0.2.2:50000 GET / blog.localhost:8080 -> blog.localhost 200 630B
+ *        相手             リクエスト  Host ヘッダー     答えたサイト  結果 本文の大きさ
+ */
 static void log_http(const uint8_t *peer_ip, uint16_t peer_port, const char *method,
-                     const char *path, const char *host, int status, uint32_t body_len)
+                     const char *path, const char *host, const char *site,
+                     int status, uint32_t body_len)
 {
     log_newline_if_at_prompt();
     vga_set_color(status < 400 ? COLOR_OK : COLOR_ERROR);
@@ -559,13 +566,17 @@ static void log_http(const uint8_t *peer_ip, uint16_t peer_port, const char *met
     print_untrusted(method, 8);
     vga_putchar(' ');
     print_untrusted(path, 30);
-    vga_print(" host=");
+    vga_putchar(' ');
     print_untrusted(*host ? host : "-", 24);
     vga_print(" -> ");
+    if (*site) {                /* サイトの名前はこちらで決めたものなので、そのまま出してよい */
+        vga_print(site);
+        vga_putchar(' ');
+    }
     vga_print_dec((uint32_t)status);
-    vga_print(" (");
+    vga_putchar(' ');
     vga_print_dec(body_len);
-    vga_print(" bytes)\n");
+    vga_print("B\n");
 }
 
 static void cmd_http(const char *arg)
@@ -603,6 +614,31 @@ static void cmd_http(const char *arg)
         http_log = 0;
     } else {
         vga_print("usage: http | http on|off | http log on|off\n");
+    }
+}
+
+/* ⑩: サイトの一覧と、それぞれが答えたリクエストの数 */
+static void cmd_vhost(void)
+{
+    for (int i = 0; i < vhost_count; i++) {
+        const struct vhost *v = &vhosts[i];
+        vga_print(v->name);
+        for (const char *const *a = v->aliases; *a; a++) {
+            vga_print(a == v->aliases ? " (alias " : ", ");
+            vga_print(*a);
+            if (!a[1])
+                vga_putchar(')');
+        }
+        if (i == 0)
+            vga_print(" [default: no name matched]");
+        vga_print(": requests ");
+        vga_print_dec(v->requests);
+        vga_print(", files");
+        for (const struct vhost_file *f = v->files; f->path; f++) {
+            vga_putchar(' ');
+            vga_print(f->path);
+        }
+        vga_putchar('\n');
     }
 }
 
@@ -756,6 +792,8 @@ static void run_command(const char *line)
         cmd_http("");
     } else if (memcmp(line, "http ", 5) == 0) {
         cmd_http(line + 5);
+    } else if (strcmp(line, "vhost") == 0) {
+        cmd_vhost();
     } else if (strcmp(line, "clear") == 0) {
         vga_clear();
         draw_title();

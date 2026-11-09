@@ -4,7 +4,7 @@
 
 ゴール: 自作OSの上で自作の Web サーバーを動かし、Windows のブラウザからページを開く。最後に `Host` ヘッダーでサイトを振り分けて、Apache の VirtualHost のしくみを自分で再現する。
 
-現在の到達点: ⑧ TCP が動くようになった。3ウェイハンドシェイク、再送、フロー制御、切断を作り、自作OSのエコーサーバーと本物の Linux の `nc` の間で 1 MB のデータが壊れずに往復する。
+現在の到達点: ⑩ バーチャルホストまで作り、ゴールに着いた。自作OSの Web サーバーが、同じ IP アドレスとポートで `Host` ヘッダーを見て、`localhost`、`blog.localhost`、`shop.localhost` と既定のサイトを返し分ける。`make run` の後、Windows のブラウザで `http://blog.localhost:8080/` などを開く。
 
 **再開するときは [docs/progress.md](docs/progress.md)(進捗メモ・やり残し)から読む。**
 
@@ -20,8 +20,8 @@
 | ⑥ ネットワークカード | QEMU の仮想 NIC のドライバ、パケットの送受信 | ✅ [ノート](docs/06-network-card.md) |
 | ⑦ Ethernet / ARP / IP / ICMP | WSL の Linux から自作OSに `ping` が通る | ✅ [ノート](docs/07-network-stack.md) |
 | ⑧ TCP | 通信のつながりを作る | ✅ [ノート](docs/08-tcp.md) |
-| ⑨ HTTP サーバー | Windows のブラウザで自作OSのページが開ける | |
-| ⑩ バーチャルホスト | `Host` ヘッダーで返すサイトを切り替える | |
+| ⑨ HTTP サーバー | Windows のブラウザで自作OSのページが開ける | ✅ [ノート](docs/09-http.md) |
+| ⑩ バーチャルホスト | `Host` ヘッダーで返すサイトを切り替える | ✅ [ノート](docs/10-vhost.md) |
 
 開発環境の作り方とつまずいた点の記録は [docs/setup.md](docs/setup.md) を参照。
 
@@ -53,11 +53,14 @@
 | `kernel/icmp.c` | ICMP。ping の問いかけと返事 |
 | `kernel/tcp.c` | TCP。つながりの管理、再送、フロー制御。使い方は `kernel/tcp.h` |
 | `kernel/echo.c` | エコーサーバー(ポート 7)。TCP の上で動く最初のアプリ |
+| `kernel/http.c` | Web サーバー(ポート 80)。HTTP/1.1 の GET と HEAD、keep-alive、時間切れ |
+| `kernel/vhost.c` | バーチャルホスト。サイトの一覧(各サイトのページもここ)と、Host ヘッダーからサイトを選ぶしくみ |
 | `kernel/io.h` | I/O ポートの読み書き(`inb` / `outb`、2バイト・4バイト版も) |
 | `kernel/linker.ld` | カーネルをメモリの 0x8000 番地から並べる指示書 |
 | `tools/ping-lab.sh` | 本物の Linux の `ping` や `nc` を自作OSへ届ける実験室(`make run-ping`) |
 | `tools/tcp-test.py` | TCP の自動テスト。Python が相手役になる(`make test-tcp`) |
 | `tools/tcp-linux-test.sh` | 本物の Linux の `nc` とつなぐ自動テスト(`make test-tcp-linux`) |
+| `tools/http-test.py` | Web サーバーとバーチャルホストの自動テスト(`make test-http`) |
 | `Makefile` | ビルドと実行の手順 |
 | `.vscode/tasks.json` | VS Code の Ctrl+Shift+B で `make run` を実行する設定 |
 | `.vscode/c_cpp_properties.json` | VS Code に C のカーネル用の設定を教える |
@@ -87,6 +90,7 @@
 | ビルドして QEMU で起動 | **Ctrl+Shift+B** | `make run` |
 | Linux の `ping` や `nc` が届く構成で起動 | | `make run-ping` |
 | TCP の自動テスト | | `make test-tcp` / `make test-tcp-linux` |
+| Web サーバーの自動テスト(約 3 分) | | `make test-http` |
 | ビルドだけ | Ctrl+Shift+P →「タスクの実行」→ `build` | `make` |
 | 生成物を消す | Ctrl+Shift+P →「タスクの実行」→ `clean` | `make clean` |
 
