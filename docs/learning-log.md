@@ -18,7 +18,7 @@
 | 2026-11-04 | ⑦ Ethernet / ARP / IP / ICMP | 層に分けて作り、ping が通った。`ping` / `arp` / `netlog` コマンド、`make run-ping`。ブートローダーの読み込みを 128KB に | `1955383` |
 | 2026-11-06 | ⑧ TCP | 待ち受け側の TCP(ハンドシェイク、再送、フロー制御、切断)とエコーサーバー。`tcp` / `echo` コマンド、`make test-tcp`、`make test-tcp-linux`。Windows から hostfwd で届くことを確認 | `52ab6d5` |
 | 2026-11-08 | ⑨ HTTP サーバー | ポート 80 の Web サーバー(GET / HEAD、keep-alive、パイプライン、時間切れ、エラーの番号)。`http` コマンドとアクセスログ、TCP に `tcp_abort`、`make test-http`、`make run` に 8080 → 80 の転送 | `e89c164` |
-| 2026-11-09 | ⑩ バーチャルホスト | Host ヘッダーでサイトを選ぶ(`vhost.c`)。localhost / blog.localhost / shop.localhost と既定のサイト。`vhost` コマンド、アクセスログに答えたサイト、`make test-http` を 50 件に。ゴールに到達 | (コミット後に記入) |
+| 2026-11-09 | ⑩ バーチャルホスト | Host ヘッダーでサイトを選ぶ(`vhost.c`)。localhost / blog.localhost / shop.localhost と既定のサイト。`vhost` コマンド、アクセスログに答えたサイト、`make test-http` を 50 件に。ゴールに到達 | `e337562` |
 
 ## ① 起動 — [01-boot.md](01-boot.md)
 
