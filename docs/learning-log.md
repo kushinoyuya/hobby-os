@@ -7,19 +7,19 @@
 
 | 日付 | 段階 | やったこと | コミット |
 |---|---|---|---|
-| 2026-10-28 | 準備 | GitHub にリポジトリを作成し、学習プランを決めた。WSL2 の導入を始めた | `0e3ffe4` |
-| 2026-10-29 | 準備 | Ubuntu、開発ツール(nasm、QEMU、gdb)、VS Code を整え、コミット前の秘密情報チェックを入れた。IPv6 が通らない問題を解決([setup.md](setup.md)) | `416d7c8` `5735a64` |
-| 2026-10-29 | ① 起動 | ブートセクタで文字を表示 | `416d7c8` |
-| 2026-10-29 | ② 512バイトの壁 | ディスクから続きを読み込む | `0007e30` |
-| 2026-10-29 | ③ 32ビットと C | プロテクトモードに切り替えて C のカーネルを動かす | `2078294` |
-| 2026-10-29 | ④ 割り込み | タイマーとキーボード | `a12f426` |
-| 2026-10-31 | ⑤ メモリ管理 | メモリの地図、ページ、kmalloc / kfree、`mem` コマンド | `ffa49cc` |
-| 2026-11-01 | ⑥ ネットワークカード | PCI で RTL8139 を探し、フレームを送受信。`pci` / `net` / `nettest` コマンド | `90b84e8` |
-| 2026-11-04 | ⑦ Ethernet / ARP / IP / ICMP | 層に分けて作り、ping が通った。`ping` / `arp` / `netlog` コマンド、`make run-ping`。ブートローダーの読み込みを 128KB に | `1955383` |
-| 2026-11-06 | ⑧ TCP | 待ち受け側の TCP(ハンドシェイク、再送、フロー制御、切断)とエコーサーバー。`tcp` / `echo` コマンド、`make test-tcp`、`make test-tcp-linux`。Windows から hostfwd で届くことを確認 | `52ab6d5` |
-| 2026-11-08 | ⑨ HTTP サーバー | ポート 80 の Web サーバー(GET / HEAD、keep-alive、パイプライン、時間切れ、エラーの番号)。`http` コマンドとアクセスログ、TCP に `tcp_abort`、`make test-http`、`make run` に 8080 → 80 の転送 | `e89c164` |
-| 2026-11-09 | ⑩ バーチャルホスト | Host ヘッダーでサイトを選ぶ(`vhost.c`)。localhost / blog.localhost / shop.localhost と既定のサイト。`vhost` コマンド、アクセスログに答えたサイト、`make test-http` を 50 件に。ゴールに到達 | `e337562` |
-| 2026-11-14 | ⑪ Apache と見比べる | 同じサイト構成の Apache を 8081 番で動かし(`apache/httpd.conf`、sudo なし)、`make compare-apache` で 30 通りのリクエストを比べた。26 件が同じ、4 件が違う | `6495f39` |
+| 2026-10-28 | 準備 | GitHub にリポジトリを作成し、学習プランを決めた。WSL2 の導入を始めた | `665cdf5` |
+| 2026-10-29 | 準備 | Ubuntu、開発ツール(nasm、QEMU、gdb)、VS Code を整え、コミット前の秘密情報チェックを入れた。IPv6 が通らない問題を解決([setup.md](setup.md)) | `bf9eb72` `eea160e` |
+| 2026-10-29 | ① 起動 | ブートセクタで文字を表示 | `bf9eb72` |
+| 2026-10-29 | ② 512バイトの壁 | ディスクから続きを読み込む | `5999ae1` |
+| 2026-10-29 | ③ 32ビットと C | プロテクトモードに切り替えて C のカーネルを動かす | `9e7168d` |
+| 2026-10-29 | ④ 割り込み | タイマーとキーボード | `9598d3a` |
+| 2026-10-31 | ⑤ メモリ管理 | メモリの地図、ページ、kmalloc / kfree、`mem` コマンド | `41b2105` |
+| 2026-11-01 | ⑥ ネットワークカード | PCI で RTL8139 を探し、フレームを送受信。`pci` / `net` / `nettest` コマンド | `02829dd` |
+| 2026-11-04 | ⑦ Ethernet / ARP / IP / ICMP | 層に分けて作り、ping が通った。`ping` / `arp` / `netlog` コマンド、`make run-ping`。ブートローダーの読み込みを 128KB に | `2e56871` |
+| 2026-11-06 | ⑧ TCP | 待ち受け側の TCP(ハンドシェイク、再送、フロー制御、切断)とエコーサーバー。`tcp` / `echo` コマンド、`make test-tcp`、`make test-tcp-linux`。Windows から hostfwd で届くことを確認 | `a3aed04` |
+| 2026-11-08 | ⑨ HTTP サーバー | ポート 80 の Web サーバー(GET / HEAD、keep-alive、パイプライン、時間切れ、エラーの番号)。`http` コマンドとアクセスログ、TCP に `tcp_abort`、`make test-http`、`make run` に 8080 → 80 の転送 | `80bf2a3` |
+| 2026-11-09 | ⑩ バーチャルホスト | Host ヘッダーでサイトを選ぶ(`vhost.c`)。localhost / blog.localhost / shop.localhost と既定のサイト。`vhost` コマンド、アクセスログに答えたサイト、`make test-http` を 50 件に。ゴールに到達 | `0918969` |
+| 2026-11-14 | ⑪ Apache と見比べる | 同じサイト構成の Apache を 8081 番で動かし(`apache/httpd.conf`、sudo なし)、`make compare-apache` で 30 通りのリクエストを比べた。26 件が同じ、4 件が違う | `7ca3d1b` |
 
 ## ① 起動 — [01-boot.md](01-boot.md)
 
