@@ -19,6 +19,7 @@
 | 2026-11-06 | ⑧ TCP | 待ち受け側の TCP(ハンドシェイク、再送、フロー制御、切断)とエコーサーバー。`tcp` / `echo` コマンド、`make test-tcp`、`make test-tcp-linux`。Windows から hostfwd で届くことを確認 | `52ab6d5` |
 | 2026-11-08 | ⑨ HTTP サーバー | ポート 80 の Web サーバー(GET / HEAD、keep-alive、パイプライン、時間切れ、エラーの番号)。`http` コマンドとアクセスログ、TCP に `tcp_abort`、`make test-http`、`make run` に 8080 → 80 の転送 | `e89c164` |
 | 2026-11-09 | ⑩ バーチャルホスト | Host ヘッダーでサイトを選ぶ(`vhost.c`)。localhost / blog.localhost / shop.localhost と既定のサイト。`vhost` コマンド、アクセスログに答えたサイト、`make test-http` を 50 件に。ゴールに到達 | `e337562` |
+| 2026-11-14 | ⑪ Apache と見比べる | 同じサイト構成の Apache を 8081 番で動かし(`apache/httpd.conf`、sudo なし)、`make compare-apache` で 30 通りのリクエストを比べた。26 件が同じ、4 件が違う | (未コミット) |
 
 ## ① 起動 — [01-boot.md](01-boot.md)
 
@@ -156,6 +157,19 @@
 
 **キーワード**: バーチャルホスト、名前ベース / IP ベース、ServerName、ServerAlias、DocumentRoot、既定のサイト(default vhost)、正規化、完全一致、DNS、`.localhost`(RFC 6761)、SNI、421 Misdirected Request、Punycode
 
+## ⑪ 本物の Apache と見比べる — [11-apache.md](11-apache.md)
+
+**分かったこと**
+- `vhost.c` の `vhosts[]` は、Apache の設定ファイルの `<VirtualHost>` の並びと1対1で対応する。先頭が既定のサイトなのも同じ
+- 同じ 30 通りのリクエストのうち 26 件で同じ答え。整え方(小文字、ポート、最後の点)、ぴったり一致、既定のサイト、keep-alive の中でのサイト選びは Apache と同じに作れていた
+- 違ったのは「形のおかしい Host」と「URL に名前が入ったリクエスト」。Apache は **形がおかしければサイトを選ぶ前に 400 で断る**。hobby-os は既定のサイトに回していた
+- RFC 9112 では、Host の値が正しい形でなければ 400 にしなければならない。URL に名前があれば Host より URL を使う
+- 入り口で厳しく断るのは、部品ごとに Host の読み方がずれると攻撃に使われるため(Host ヘッダー攻撃、リクエストスマグリング)
+- Apache では、サイトが決まる前に断ったリクエストも、**先頭のサイト** の設定とログで扱われる
+- 1024 以上のポートで、ログの置き場所も自分のフォルダにすれば、Apache は sudo なしで動かせる。Ubuntu 標準では `sites-available` に1サイト1ファイルで置き、`a2ensite`、`apache2ctl configtest`、`systemctl reload` の順で反映する
+
+**キーワード**: httpd.conf、`<VirtualHost>`、`Listen`、`LoadModule`、SSI(mod_include)、`LogFormat` の `%v`、`HttpProtocolOptions Strict`、absolute-form、RFC 9112、`.invalid`(RFC 6761)、sites-available / sites-enabled、a2ensite、apache2ctl configtest / -S、systemctl reload(graceful)
+
 ## 全体を通して分かったこと
 
 - **「誰がやってくれていたか」を自分でやる**: 普段の C では OS がやってくれていたこと(`.bss` を0にする、`malloc`、画面への表示)を、全部自分で用意する必要がある
@@ -212,3 +226,8 @@
 - [ ] ⑩ で、Host の `:8080` を外してから比べるのはなぜか。外さないと何が起きるか
 - [ ] ⑩ で、本物のサイトを一覧の先頭に置くと何が困るか
 - [ ] ⑩ で、ブラウザで `blog.localhost:8080` を開いてからページが出るまでに、① 〜 ⑩ のどの部品がどの順で働くか言えるか
+- [ ] ⑪ で、`vhost.c` の `name`、`aliases`、`files`、一覧の順番が、`httpd.conf` のどの行にあたるか言えるか
+- [ ] ⑪ で、`Host: localhost:abc` に hobby-os は 200、Apache は 400 で答えた。どちらが RFC どおりで、なぜ厳しいほうが安全なのか
+- [ ] ⑪ で、`GET http://shop.localhost/` に `Host: blog.localhost` が付いていたら、どちらのサイトが答えるべきか
+- [ ] ⑪ で、Apache のログの 400 の行の「答えたサイト」が先頭のサイトになるのはなぜか
+- [ ] ⑪ で、Ubuntu 標準の Apache に新しいサイトを足す手順(ファイルを置く → a2ensite → configtest → reload)を、何も見ずに打てるか

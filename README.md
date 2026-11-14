@@ -22,6 +22,7 @@
 | ⑧ TCP | 通信のつながりを作る | ✅ [ノート](docs/08-tcp.md) |
 | ⑨ HTTP サーバー | Windows のブラウザで自作OSのページが開ける | ✅ [ノート](docs/09-http.md) |
 | ⑩ バーチャルホスト | `Host` ヘッダーで返すサイトを切り替える | ✅ [ノート](docs/10-vhost.md) |
+| ⑪ Apache と見比べる | 同じサイト構成を本物の Apache で作り、同じリクエストへの答えを比べる | ✅ [ノート](docs/11-apache.md) |
 
 開発環境の作り方とつまずいた点の記録は [docs/setup.md](docs/setup.md) を参照。
 
@@ -61,6 +62,9 @@
 | `tools/tcp-test.py` | TCP の自動テスト。Python が相手役になる(`make test-tcp`) |
 | `tools/tcp-linux-test.sh` | 本物の Linux の `nc` とつなぐ自動テスト(`make test-tcp-linux`) |
 | `tools/http-test.py` | Web サーバーとバーチャルホストの自動テスト(`make test-http`) |
+| `apache/httpd.conf` | 見比べ用の本物の Apache の設定。`kernel/vhost.c` と同じサイト構成(`make apache-start`) |
+| `apache/sites/` | Apache の各サイトのページ(DocumentRoot) |
+| `tools/apache-compare.py` | 同じリクエストを hobby-os と Apache に送って答えを並べる(`make compare-apache`) |
 | `Makefile` | ビルドと実行の手順 |
 | `.vscode/tasks.json` | VS Code の Ctrl+Shift+B で `make run` を実行する設定 |
 | `.vscode/c_cpp_properties.json` | VS Code に C のカーネル用の設定を教える |
@@ -91,6 +95,8 @@
 | Linux の `ping` や `nc` が届く構成で起動 | | `make run-ping` |
 | TCP の自動テスト | | `make test-tcp` / `make test-tcp-linux` |
 | Web サーバーの自動テスト(約 3 分) | | `make test-http` |
+| 本物の Apache を 8081 番で起動 / 停止 | | `make apache-start` / `make apache-stop` |
+| hobby-os と Apache の答えを見比べる | | `make compare-apache` |
 | ビルドだけ | Ctrl+Shift+P →「タスクの実行」→ `build` | `make` |
 | 生成物を消す | Ctrl+Shift+P →「タスクの実行」→ `clean` | `make clean` |
 

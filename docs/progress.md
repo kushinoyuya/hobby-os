@@ -2,7 +2,9 @@
 
 次に再開するときは、まずこのファイルを読む。
 
-## 現在地(2026-11-09 時点)
+## 現在地(2026-11-14 時点)
+
+**⑪ 本物の Apache と見比べた(未コミット)。** `apache/httpd.conf` に ⑩ と同じサイト構成を作り、`make apache-start` で 8081 番に Apache を起動する(sudo なし)。`make compare-apache` で同じ 30 通りのリクエストを両方に送ると、26 件が同じ答え、4 件(`Host: localhost:abc`、`:99999`、空の Host、`GET http://shop.localhost/`)が違う。違いの理由と、hobby-os をどう直せば Apache と同じになるかは [11-apache.md](11-apache.md) の 3 節。**Windows のブラウザで `http://blog.localhost:8081/` などを開くのはまだ試していない**(8080 と並べて見る)。
 
 **⑩ バーチャルホストまで完了し、ゴールに到達(push 済み)。** OS は起動するとポート 80 で Web サーバーを動かし、Host ヘッダーでサイトを選ぶ。`make run` で起動し、**Windows のブラウザで `http://localhost:8080/`、`http://blog.localhost:8080/`、`http://shop.localhost:8080/`、`http://127.0.0.1:8080/` を開いて見比べる**(ブラウザで開くのはまだ試していない。最初に試す)。QEMU の画面にはリクエストごとに、答えたサイト付きのアクセスログが出る。`vhost` でサイトの一覧と数、`http` で回数、`tcp` でつながりの一覧が見られる(コマンドは `help` で一覧)。ポート 7 のエコーサーバーもそのまま動いている。
 
@@ -18,6 +20,7 @@
 | ⑧ TCP | ✅ | [08-tcp.md](08-tcp.md) |
 | ⑨ HTTP サーバー | ✅ | [09-http.md](09-http.md) |
 | ⑩ バーチャルホスト | ✅ | [10-vhost.md](10-vhost.md) |
+| ⑪ Apache と見比べる | ✅ | [11-apache.md](11-apache.md) |
 
 ゴール: 自作OSの上で自作の Web サーバーを動かし、`Host` ヘッダーで振り分けて Apache の VirtualHost のしくみを再現する。
 
@@ -52,9 +55,14 @@
 - [ ] Windows のブラウザで `http://localhost:8080/` と `http://blog.localhost:8080/` などを開いて確かめる(WSL から転送先への curl では、名前の URL も含めて確認済み)
 - [x] ⑩ をコミットする(2026-11-09 済み)
 - [x] ⑩ を push する(2026-11-09 済み)
-- [ ] ゴールの後に何をするか → 未回答(例: ⑩ の補足の表にあるワイルドカードや 421、ファイルシステム、本物の Apache との見比べ)
+- [x] ゴールの後に何をするか → 本物の Apache との見比べ(2026-11-14、⑪)
+- [x] WSL の Ubuntu で本物の Apache + VirtualHost を動かす → ⑪ で実施。`sudo apt-get install apache2` 済み(標準の Apache もポート 80 で動いている)
+- [ ] ⑪ をコミットする
+- [ ] Windows のブラウザで `http://localhost:8081/`、`http://blog.localhost:8081/` などを開き、8080 と並べて見る
+- [ ] [11-apache.md](11-apache.md) の 5 節の練習(Ubuntu 標準の `sites-available` と `a2ensite` で blog.localhost を足す。sudo が要るので自分で打つ)
+- [ ] 違った 4 件を hobby-os で Apache に合わせて直すか → 未回答(直し方は 11-apache.md の 3 節の「まとめ」)
+- [ ] 次に何をするか → 未回答(例: ワイルドカードや 421、ファイルシステム)
 - [ ] 各ノートに「理解度チェック」の問題を付けるか → 未回答
-- [ ] 並行して WSL の Ubuntu で本物の Apache + VirtualHost を動かす練習をするか → 未回答
 - [ ] コミットのメールアドレスを GitHub の noreply アドレスに切り替えるか → 未回答
 - [ ] Windows 側の古いコピー `C:\Users\PC_User\Products\hobby-os` を消すか → 自分で判断(GitHub にあるので消しても失われない)
 

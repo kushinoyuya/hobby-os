@@ -3,6 +3,8 @@
 # make run-ping: Linux の ping と nc が届く構成で QEMU を起動する
 # make test-tcp: TCP の自動テストを実行する
 # make test-http: Web サーバーの自動テストを実行する
+# make apache-start / apache-stop: 見比べ用の本物の Apache を 8081 番で起動する / 止める
+# make compare-apache: 同じリクエストを hobby-os と Apache に送って、答えを並べる
 # make clean: ビルド成果物を消す
 #
 # ディスクイメージ(build/os.img)の中身:
@@ -96,7 +98,31 @@ test-tcp-linux: $(IMG)
 test-http: $(IMG)
 	QEMU_DISPLAY="-display none" LAB_COMMAND="python3 tools/http-test.py" bash tools/ping-lab.sh
 
+# ---- ⑪ 本物の Apache と見比べる(apache/httpd.conf。sudo なしで、自分のユーザーで動かす) ----
+#   HOBBY_OS=...  : 設定ファイルの中の ${HOBBY_OS} に、このリポジトリの場所を入れる
+#   -f            : Ubuntu 標準の /etc/apache2/apache2.conf ではなく、この設定ファイルを使う
+#   -k start/stop : 裏で起動する / 止める(apachectl start / stop と同じ)
+APACHE := HOBBY_OS=$(CURDIR) /usr/sbin/apache2 -f $(CURDIR)/apache/httpd.conf
+
+apache-start: | $(BUILD)/apache
+	$(APACHE) -k start
+	@echo "Apache を起動しました: http://localhost:8081/ (止めるときは make apache-stop)"
+
+apache-stop:
+	$(APACHE) -k stop
+
+apache-check: | $(BUILD)/apache
+	$(APACHE) -t
+
+# 同じリクエストを hobby-os(127.0.0.1:8080)と Apache(127.0.0.1:8081)に送って、答えを並べる。
+# どちらも動いていなければ、この間だけ起動して、終わったら止める
+compare-apache: $(IMG) | $(BUILD)/apache
+	python3 tools/apache-compare.py
+
+$(BUILD)/apache:
+	mkdir -p $@
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all run run-ping test-tcp test-tcp-linux test-http clean
+.PHONY: all run run-ping test-tcp test-tcp-linux test-http apache-start apache-stop apache-check compare-apache clean

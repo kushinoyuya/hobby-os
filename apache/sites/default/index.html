@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>Apache: サイトが見つかりません</title>
+<style>body{font-family:sans-serif;margin:2em;color:#444}code{background:#eee;padding:0 .3em}</style>
+</head><body>
+<!-- hobby-os の page_sites(kernel/http.c)にあたるページ。
+     下の「#echo」の行は SSI(mod_include)で、Apache が返す直前に Host ヘッダーの値に置き換える。
+     encoding="entity" で < や " を &lt; などに直す(hobby-os の put_html と同じ役目) -->
+<h1>このサイトはありません</h1>
+<p>Host ヘッダー <code><!--#echo encoding="entity" var="HTTP_HOST" --></code> に当てはまるサイトは、この Apache にはありません。</p>
+<p>どのサイトにも当てはまらないリクエストには、設定ファイルの一番上にある「既定のサイト」(このページ)が答えます。</p>
+<h2>このサーバーにあるサイト</h2>
+<ul>
+<li><a href="http://localhost:8081/">localhost</a>(別名: hobby-os.localhost)</li>
+<li><a href="http://blog.localhost:8081/">blog.localhost</a>(別名: www.blog.localhost)</li>
+<li><a href="http://shop.localhost:8081/">shop.localhost</a></li>
+</ul>
+</body></html>

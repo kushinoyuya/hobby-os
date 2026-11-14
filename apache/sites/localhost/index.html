@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>Apache</title>
+<style>body{font-family:sans-serif;margin:2em}th{text-align:left;padding-right:1em}</style>
+</head><body>
+<!-- hobby-os の page_status(kernel/http.c)にあたるページ。「#echo」の所は SSI で、返す直前に値が入る -->
+<h1>Apache の Web サーバー</h1>
+<p>このページは WSL の Ubuntu の本物の Apache が返しています。</p>
+<table>
+<tr><th>Host ヘッダー</th><td><!--#echo encoding="entity" var="HTTP_HOST" --></td></tr>
+<tr><th>あなたの IP とポート</th><td><!--#echo var="REMOTE_ADDR" -->:<!--#echo var="REMOTE_PORT" --></td></tr>
+<tr><th>サーバーのソフト</th><td><!--#echo var="SERVER_SOFTWARE" --></td></tr>
+<tr><th>今の時刻</th><td><!--#echo var="DATE_LOCAL" --></td></tr>
+</table>
+<p><a href="/hello.txt">/hello.txt</a> ・ <a href="/nothing">/nothing</a>(404)</p>
+<h2>同じサーバーにあるサイト</h2>
+<p>同じ IP アドレスとポートで、Host ヘッダーだけを変えて開く。</p>
+<ul>
+<li><a href="http://localhost:8081/">localhost</a>(別名: hobby-os.localhost)</li>
+<li><a href="http://blog.localhost:8081/">blog.localhost</a>(別名: www.blog.localhost)</li>
+<li><a href="http://shop.localhost:8081/">shop.localhost</a></li>
+</ul>
+</body></html>
